@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 320" font-family="system-ui,sans-serif" font-size="14">
+  <rect width="760" height="320" fill="#1e1f22" rx="8"/>
+  <text x="380" y="34" fill="#e8e6e3" text-anchor="middle" font-size="18" font-weight="600">Mode C · Coordinator 协调者(多目标推荐形态)</text>
+  <rect x="280" y="70" width="200" height="90" rx="8" fill="#2d2e32" stroke="#d29922" stroke-width="1.5"/>
+  <text x="380" y="100" fill="#e8e6e3" text-anchor="middle" font-weight="600">Coordinator(双向可达处)</text>
+  <text x="380" y="122" fill="#9da7b3" text-anchor="middle">指令路由 · 注册/心跳</text>
+  <text x="380" y="142" fill="#9da7b3" text-anchor="middle">报告存档 · 历史对比</text>
+  <rect x="40" y="90" width="160" height="70" rx="8" fill="#2d2e32" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="120" y="120" fill="#e8e6e3" text-anchor="middle" font-weight="600">控制端</text>
+  <text x="120" y="142" fill="#9da7b3" text-anchor="middle">faultdeck CLI / Web UI</text>
+  <rect x="40" y="220" width="200" height="64" rx="8" fill="#2d2e32" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="140" y="248" fill="#e8e6e3" text-anchor="middle" font-weight="600">agent·目标 1(出站反连)</text>
+  <rect x="280" y="220" width="200" height="64" rx="8" fill="#2d2e32" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="380" y="248" fill="#e8e6e3" text-anchor="middle" font-weight="600">agent·目标 2(出站反连)</text>
+  <rect x="520" y="220" width="200" height="64" rx="8" fill="#2d2e32" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="620" y="248" fill="#e8e6e3" text-anchor="middle" font-weight="600">agent·目标 N(公网监听)</text>
+  <line x1="200" y1="125" x2="280" y2="115" stroke="#58a6ff" stroke-width="2" marker-end="url(#arc)"/>
+  <line x1="140" y1="220" x2="330" y2="160" stroke="#3fb950" stroke-width="2" marker-end="url(#arc)"/>
+  <line x1="380" y1="220" x2="380" y2="160" stroke="#3fb950" stroke-width="2" marker-end="url(#arc)"/>
+  <line x1="620" y1="220" x2="430" y2="160" stroke="#3fb950" stroke-width="2" marker-end="url(#arc)"/>
+  <text x="380" y="185" fill="#9da7b3" text-anchor="middle">注册/心跳 ⇅ 指令路由 ⇅ 报告回传存档</text>
+  <text x="380" y="305" fill="#6e7681" text-anchor="middle">解决双向 NAT · 多目标舰队视图 · 报告集中存档 · 可运行于 meshlet 虚拟网</text>
+  <defs>
+    <marker id="arc" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#d29922"/></marker>
+  </defs>
+</svg>

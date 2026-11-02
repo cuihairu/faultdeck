@@ -31,6 +31,29 @@ faultdeck CLI(→ 可选 Web UI)
             ├ WinDivert(Windows,P2)    └ Chaos Mesh(K8s,可选)
 ```
 
+
+## 连接架构(三种模式)
+
+### Mode A · Agent 监听(目标公网可达)
+
+![Mode A](/faultdeck/public/mode-a-agent-listen.svg)
+
+控制端主动拨入目标上的 agent;注入与回滚指令下发,事件与报告回传。
+
+### Mode B · 控制端监听(目标 NAT 后)
+
+![Mode B](/faultdeck/public/mode-b-controller-listen.svg)
+
+agent 主动出站反向拨号,长连隧道(断线自动重连),指令与报告经隧道双向流动。
+
+### Mode C · Coordinator 协调者(多目标推荐形态)
+
+![Mode C](/faultdeck/public/mode-c-coordinator.svg)
+
+协调者部署在双向可达处;agent 注册+心跳,控制端附着发起实验;指令路由与报告集中存档;解决双向 NAT,支持多目标舰队视图;舰队场景可运行于 meshlet 虚拟网之上。
+
+> 三种模式共用同一套协议(指令/事件/日志/报告流),差异仅在「谁监听、谁拨号、是否经协调者路由」。
+
 ## 路线图
 
 | 阶段 | 内容 | 状态 |

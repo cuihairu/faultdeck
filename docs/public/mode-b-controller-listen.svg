@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" font-family="system-ui,sans-serif" font-size="14">
+  <rect width="760" height="300" fill="#1e1f22" rx="8"/>
+  <text x="380" y="34" fill="#e8e6e3" text-anchor="middle" font-size="18" font-weight="600">Mode B · 控制端监听(目标 NAT 后,agent 反连)</text>
+  <rect x="60" y="90" width="200" height="80" rx="8" fill="#2d2e32" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="160" y="122" fill="#e8e6e3" text-anchor="middle" font-weight="600">控制端(云端/可达处)</text>
+  <text x="160" y="144" fill="#9da7b3" text-anchor="middle">faultdeck CLI(监听端口)</text>
+  <rect x="500" y="90" width="200" height="80" rx="8" fill="#2d2e32" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="600" y="122" fill="#e8e6e3" text-anchor="middle" font-weight="600">Linux 被测端(内网/NAT)</text>
+  <text x="600" y="144" fill="#9da7b3" text-anchor="middle">faultdeck-agent(反向拨号)</text>
+  <line x1="500" y1="118" x2="260" y2="118" stroke="#3fb950" stroke-width="2" marker-end="url(#arb2)"/>
+  <text x="380" y="106" fill="#3fb950" text-anchor="middle">agent 主动出站拨号(穿透 NAT)</text>
+  <line x1="260" y1="146" x2="500" y2="146" stroke="#58a6ff" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arb)"/>
+  <text x="380" y="168" fill="#58a6ff" text-anchor="middle">指令经隧道下发 · 事件/报告经隧道回流</text>
+  <rect x="260" y="210" width="240" height="52" rx="8" fill="#2d2e32" stroke="#8b949e" stroke-width="1"/>
+  <text x="380" y="232" fill="#9da7b3" text-anchor="middle">长连隧道:断线自动重连</text>
+  <text x="380" y="252" fill="#9da7b3" text-anchor="middle">双向 token,agent 只信配置指纹</text>
+  <defs>
+    <marker id="arb2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#3fb950"/></marker>
+    <marker id="arb" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#58a6ff"/></marker>
+  </defs>
+</svg>
