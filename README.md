@@ -35,19 +35,19 @@ faultdeck CLI (→ optional Web UI)
 
 ### Mode A · Agent Listens (publicly reachable target)
 
-![Mode A](/faultdeck/public/mode-a-agent-listen.svg)
+![Mode A](docs/public/mode-a-agent-listen.svg)
 
 The controller dials into the agent on the target; injection/rollback commands flow down, events and reports flow back.
 
 ### Mode B · Controller Listens (target behind NAT)
 
-![Mode B](/faultdeck/public/mode-b-controller-listen.svg)
+![Mode B](docs/public/mode-b-controller-listen.svg)
 
 The agent dials out and reverse-connects; a long-lived tunnel (auto-reconnect) carries commands and reports both ways.
 
 ### Mode C · Coordinator (recommended for multi-target)
 
-![Mode C](/faultdeck/public/mode-c-coordinator.svg)
+![Mode C](docs/public/mode-c-coordinator.svg)
 
 The coordinator sits where both sides can reach; agents register with heartbeats, controllers attach and launch experiments; commands are routed and reports archived centrally; solves double-NAT and enables a fleet view; in our fleet it can run on top of the meshlet virtual network.
 
@@ -57,7 +57,7 @@ The coordinator sits where both sides can reach; agents register with heartbeats
 
 | Phase | Scope | Status |
 |---|---|---|
-| P0 | Rust CLI + Toxiproxy adapter + experiment YAML + latency/disconnect/blackhole/bandwidth + auto recovery + JSON report (test-driven: game disconnect-reconnect scenario ships first) | In development |
+| P0 | Rust CLI + Toxiproxy adapter + experiment YAML + latency/disconnect/blackhole/bandwidth + auto recovery + JSON report (test-driven: game disconnect-reconnect scenario ships first) | Not started |
 | P1 | tc/netem adapter, TCP/UDP, traffic selection, burst loss, reordering, netns isolation | Planned |
 | P2 | Game weak-network / combat-disconnect / cross-server-partition templates, Wingman API integration, external assertions & reports | Planned |
 | P3 | WinDivert, optional Web UI, multi-target, remote agent, CI integration | Planned |

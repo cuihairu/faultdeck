@@ -36,19 +36,19 @@ faultdeck CLI(→ 可选 Web UI)
 
 ### Mode A · Agent 监听(目标公网可达)
 
-![Mode A](/faultdeck/public/mode-a-agent-listen.svg)
+![Mode A](docs/public/mode-a-agent-listen.svg)
 
 控制端主动拨入目标上的 agent;注入与回滚指令下发,事件与报告回传。
 
 ### Mode B · 控制端监听(目标 NAT 后)
 
-![Mode B](/faultdeck/public/mode-b-controller-listen.svg)
+![Mode B](docs/public/mode-b-controller-listen.svg)
 
 agent 主动出站反向拨号,长连隧道(断线自动重连),指令与报告经隧道双向流动。
 
 ### Mode C · Coordinator 协调者(多目标推荐形态)
 
-![Mode C](/faultdeck/public/mode-c-coordinator.svg)
+![Mode C](docs/public/mode-c-coordinator.svg)
 
 协调者部署在双向可达处;agent 注册+心跳,控制端附着发起实验;指令路由与报告集中存档;解决双向 NAT,支持多目标舰队视图;舰队场景可运行于 meshlet 虚拟网之上。
 
@@ -58,7 +58,7 @@ agent 主动出站反向拨号,长连隧道(断线自动重连),指令与报告�
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| P0 | Rust CLI + Toxiproxy Adapter + 实验 YAML + 延迟/断线/黑洞/带宽 + 自动恢复 + JSON 报告(测试导向:游戏断线重连场景首发) | 开发中 |
+| P0 | Rust CLI + Toxiproxy Adapter + 实验 YAML + 延迟/断线/黑洞/带宽 + 自动恢复 + JSON 报告(测试导向:游戏断线重连场景首发) | 未开始 |
 | P1 | tc/netem Adapter、TCP/UDP、流量选择、突发丢包、乱序、netns 隔离 | 待 P0 |
 | P2 | 游戏弱网/战斗断线/跨服隔离模板,集成 Wingman API、外部断言与报告 | 待 P1 |
 | P3 | WinDivert、可选 Web UI、多目标、远程 Agent、CI 集成 | 待 P2 |

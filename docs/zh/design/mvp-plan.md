@@ -42,3 +42,15 @@
 ## P1 预告
 
 tc/netem Adapter(netlink 直操而非 shell 调 tc)、TCP/UDP、流量选择(flow 分流)、突发丢包、乱序、netns 隔离;测试环境用独立 netns,避免污染宿主。
+
+## 跨机控制(2026-11-02 补充:Windows 控制端 → Linux 被测端)
+
+- P0 即可达成:Windows 跑 faultdeck CLI,Linux 被测端跑 toxiproxy-server,经 Toxiproxy REST API 注入延迟/断连/黑洞/限带宽(控制端与被测端仅需网络可达——不需要 SSH、不需要 root、不动网卡)。
+- P1 升级:tc/netem 级故障(真丢包/抖动/隔离)——推荐在 Linux 被测端常驻 faultdeck-agent(监听本地端口接收控制端指令,本机执行 netem/iptables,带安全守卫:管理网段白名单,绝不掐管理流量);SSH 代执行作备选。原 P3 的「远程 Agent」形态提前到 P1。
+
+## 连接方向与报告(2026-11-02 补充)
+
+- Agent 双模式:Mode A=agent 监听(目标公网可达);Mode B=控制端监听(目标在 NAT 后,agent 主动出站反向拨号,长连隧道断线自动重连)。单条 TCP 长连接承载指令/事件/日志/报告——两模式协议对称。
+- 报告是核心功能:唯一事实源(YAML+hash、注入时间线、恢复证据、断言结果、一键重现),JSON + HTML 双格式,历史对比做回归验证。
+
+- Coordinator 协调者模式(多目标推荐形态):部署在 agent 与控制端都可达处;agent 注册(身份/能力/心跳),控制端附着发起实验;协调者路由指令、存档报告,解决双向 NAT 并提供多目标舰队视图;与直连模式 A/B 递进(单目标直连,多目标走协调者);舰队场景可运行于 meshlet 虚拟网之上。
