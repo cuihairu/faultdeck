@@ -1,6 +1,6 @@
 <p align="center"><img src="docs/public/logo.svg" width="64" height="64" alt="FaultDeck logo" /></p>
 
-<p align="center">[![License](https://img.shields.io/badge/License-Apache--2.0-blue)](LICENSE) [![Rust](https://img.shields.io/badge/Rust-1.70+-000000?logo=rust&logoColor=white)](https://www.rust-lang.org) [![Backend](https://img.shields.io/badge/后端-Toxiproxy%20%7C%20netem%20%7C%20WinDivert-blue)](docs/design/mvp-plan.zh.md) [![Platform](https://img.shields.io/badge/平台-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey)](#) [![Status](https://img.shields.io/badge/状态-开发中-orange)](#)</p>
+<p align="center"><a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="License" /></a> <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-1.70+-000000?logo=rust&amp;logoColor=white" alt="Rust" /></a> <a href="docs/zh/design/mvp-plan.md"><img src="https://img.shields.io/badge/%E5%90%8E%E7%AB%AF-Toxiproxy%20%7C%20netem%20%7C%20WinDivert-blue" alt="Backends" /></a> <a href="#"><img src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Platform" /></a> <a href="#"><img src="https://img.shields.io/badge/%E7%8A%B6%E6%80%81-%E5%BC%80%E5%8F%91%E4%B8%AD-orange" alt="Status" /></a></p>
 
 # FaultDeck · 面向游戏开发场景的故障模拟与测试工具
 
@@ -52,4 +52,4 @@ tests/   integration/ · recovery/
 ## 文档
 
 - [ChatGPT 评审存档](docs/review/2026-11-02-chatgpt-faultdeck.md)
-- [MVP 计划](docs/design/mvp-plan.md)
+- [MVP 计划](https://cuihairu.github.io/faultdeck/design/mvp-plan/)
