@@ -1,47 +1,54 @@
-# FaultDeck · 面向游戏开发场景的故障模拟与测试工具
+# FaultDeck · Game-Dev-Oriented Fault Simulation & Testing Tool
 
-**定位:为游戏开发测试服务。** 模拟玩家弱网、断线重连、战斗中掉线、跨服网络隔离等游戏开发中真实会遇到的网络故障,自动注入、自动验证服务端能否正确恢复,生成可复现的测试报告——目的是让故障测试可重复、可自动化,替代人肉拔网线。
+English · [中文文档](README.zh.md)
 
-故障类型:延迟、丢包、断线、黑洞、带宽限制;场景按游戏开发常见问题预置(进入房间后断网重连、战斗结算丢包重试、双服脑裂、Redis/DB 超时阻塞游戏逻辑等)。不绑定 KBEngine 或单一游戏服务器,但游戏场景模板是第一公民。
+**FaultDeck serves game development testing.** It simulates real-world game network faults — player weak networks, disconnect/reconnect, mid-combat drops, cross-server partition — injects them automatically, verifies that the server recovers correctly, and produces reproducible test reports. The goal: repeatable, automated fault testing instead of manually pulling network cables.
 
-## 核心理念
+Fault types: latency, packet loss, disconnect, blackhole, bandwidth throttle. Scenarios are prebuilt around common game development problems (disconnect-on-room-join and reconnect, combat settlement packet-loss retry, dual-server brain split, Redis/DB timeouts blocking game logic). Not bound to KBEngine or any single game server — but game scenario templates are first-class citizens.
 
-- **实验 DSL 描述故障语义,Backend 决定实现方式**;Backend 不支持精确语义时返回「不支持」,不做静默近似
-- **不重造轮子**:底层引擎复用 Toxiproxy(TCP 代理)/ tc netem(Linux)/ WinDivert(Windows),FaultDeck 做编排、安全与报告
-- **可靠撤销是 MVP 硬性验收条件**,不是事后补丁
-- **安全隔离**:绝不把故障施加到承载 SSH/ZeroTier 管理流量的网卡
+## Core Principles
 
-## 架构
+- **The experiment DSL describes fault semantics; the backend decides implementation.** If a backend cannot honor the exact semantics, it returns "unsupported" — never a silent approximation.
+- **No reinvented wheels:** the underlying engines are reused — Toxiproxy (TCP proxy), tc netem (Linux), WinDivert (Windows). FaultDeck owns orchestration, safety, and reporting.
+- **Reliable rollback is an MVP acceptance gate**, not an afterthought.
+- **Safety isolation:** never apply faults to NICs/subnets carrying management traffic (SSH, ZeroTier).
+
+## Architecture
 
 ```
-faultdeck CLI(→ 可选 Web UI)
+faultdeck CLI (→ optional Web UI)
   └ Rust Experiment Engine
        Scenario Planner / Target Resolver / Safety Guard
        Lifecycle+Rollback / Metrics / Report
        └ Fault Backend Adapters
-            ├ Toxiproxy(TCP,三平台)   ├ tc/netem(Linux)
-            ├ WinDivert(Windows,P2)    └ Chaos Mesh(K8s,可选)
+            ├ Toxiproxy (TCP, 3 platforms)   ├ tc/netem (Linux)
+            ├ WinDivert (Windows, P2)        └ Chaos Mesh (K8s, optional)
 ```
 
-## 路线图
+## Roadmap
 
-| 阶段 | 内容 | 状态 |
+| Phase | Scope | Status |
 |---|---|---|
-| P0 | Rust CLI + Toxiproxy Adapter + 实验 YAML + 延迟/断线/黑洞/带宽 + 自动恢复 + JSON 报告(测试导向:游戏断线重连场景首发) | 开发中 |
-| P1 | tc/netem Adapter、TCP/UDP、流量选择、突发丢包、乱序、netns 隔离 | 待 P0 |
-| P2 | 游戏弱网/战斗断线/跨服隔离模板,集成 Wingman API、外部断言与报告 | 待 P1 |
-| P3 | WinDivert、可选 Web UI、多目标、远程 Agent、CI 集成 | 待 P2 |
+| P0 | Rust CLI + Toxiproxy adapter + experiment YAML + latency/disconnect/blackhole/bandwidth + auto recovery + JSON report (test-driven: game disconnect-reconnect scenario ships first) | In development |
+| P1 | tc/netem adapter, TCP/UDP, traffic selection, burst loss, reordering, netns isolation | Planned |
+| P2 | Game weak-network / combat-disconnect / cross-server-partition templates, Wingman API integration, external assertions & reports | Planned |
+| P3 | WinDivert, optional Web UI, multi-target, remote agent, CI integration | Planned |
 
-## 仓库结构(目标)
+## Repository Layout (target)
 
 ```
 crates/ faultdeck-core · scenario · backend · toxiproxy · netem
         safety · report · cli
-examples/ tcp-reconnect.yaml · udp-loss.yaml · network-partition.yaml
+examples/ tcp-reconnect.yaml · lost-packet-retry.yaml · network-partition.yaml
 tests/   integration/ · recovery/
 ```
 
-## 文档
+## Docs
 
-- [ChatGPT 评审存档](docs/review/2026-11-02-chatgpt-faultdeck.md)
-- [MVP 计划](docs/design/mvp-plan.md)
+- [MVP plan](docs/design/mvp-plan.md) · [MVP 计划(中文)](docs/design/mvp-plan.zh.md)
+- [ChatGPT review archive](docs/review/2026-11-02-chatgpt-faultdeck.md)
+
+## Conventions
+
+- Commits: short English; no force push; tests green before push
+- Credentials via env references only, never committed
