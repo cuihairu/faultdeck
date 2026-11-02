@@ -1,5 +1,6 @@
-# FaultDeck · 面向游戏开发场景的故障模拟与测试工具
 <p align="center"><img src="docs/public/logo.svg" width="64" height="64" alt="FaultDeck logo" /></p>
+
+# FaultDeck · 面向游戏开发场景的故障模拟与测试工具
 
 
 [English](README.md) · 中文
