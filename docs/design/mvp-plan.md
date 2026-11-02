@@ -1,7 +1,7 @@
 # FaultDeck MVP Plan (P0)
 
 Date: 2026-11-02 · Source: ChatGPT architecture review (archive in docs/review/) + user decision
-中文版:[mvp-plan.zh.md](mvp-plan.zh.md)
+中文版:[中文文档](/zh/design/mvp-plan)
 
 ## P0 Scope: minimal viable TCP fault experiments
 

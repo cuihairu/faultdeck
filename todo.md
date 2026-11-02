@@ -1,0 +1,1 @@
+- [ ] FD-P1-4 [P1] faultdeck-agent 常驻被测端(跨机控制核心):监听本地端口收控制端指令,本机执行 tc/netem+iptables 故障;安全守卫=管理网段白名单(SSH/管理 IP 永不被注入)+仅绑 127.0.0.1 或配对 token;Windows faultdeck CLI 增 remote 子命令(发现/认证/下发/回滚);验收:Windows 控制端对 Linux 目标实测断网/延迟/丢包三场景,回滚后管理通道自证畅通。前置:FD-P1-2 netem adapter。
