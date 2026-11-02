@@ -1,4 +1,6 @@
 # FaultDeck · Game-Dev-Oriented Fault Simulation & Testing Tool
+<p align="center"><img src="docs/public/logo.svg" width="64" height="64" alt="FaultDeck logo" /></p>
+
 
 English · [中文文档](README.zh.md)
 
