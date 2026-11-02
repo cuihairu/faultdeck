@@ -1,5 +1,7 @@
 <p align="center"><img src="docs/public/logo.svg" width="64" height="64" alt="FaultDeck logo" /></p>
 
+<p align="center">[![License](https://img.shields.io/badge/License-Apache--2.0-blue)](LICENSE) [![Rust](https://img.shields.io/badge/Rust-1.70+-000000?logo=rust&logoColor=white)](https://www.rust-lang.org) [![Backend](https://img.shields.io/badge/后端-Toxiproxy%20%7C%20netem%20%7C%20WinDivert-blue)](docs/design/mvp-plan.zh.md) [![Platform](https://img.shields.io/badge/平台-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey)](#) [![Status](https://img.shields.io/badge/状态-开发中-orange)](#)</p>
+
 # FaultDeck · 面向游戏开发场景的故障模拟与测试工具
 
 
