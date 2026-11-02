@@ -53,3 +53,5 @@ tc/netem adapter (netlink directly, not shelling out to tc), TCP/UDP, traffic se
 
 - Agent dual mode: Mode A = agent listens (target publicly reachable); Mode B = controller listens (agent dials out through NAT, long-lived tunnel, auto-reconnect). A single TCP stream carries commands/events/logs/reports — protocol symmetric across modes.
 - Reports are a core feature: single source of truth (YAML+hash, injection timeline, recovery evidence, assertion results, one-click replay), JSON + HTML formats, historical diff for regression verification.
+
+- Coordinator mode (recommended for multi-target): deployed where both agent and controller can reach; agents register (identity/capability/heartbeat), controllers attach and launch experiments; coordinator routes commands, archives reports, solves double-NAT and enables a fleet view; progressive with direct modes A/B (single-target direct, multi-target via coordinator); in our fleet it can run on top of the meshlet virtual network.

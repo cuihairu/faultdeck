@@ -1,3 +1,4 @@
 - [ ] FD-P1-4 [P1] faultdeck-agent 常驻被测端(跨机控制核心):监听本地端口收控制端指令,本机执行 tc/netem+iptables 故障;安全守卫=管理网段白名单(SSH/管理 IP 永不被注入)+仅绑 127.0.0.1 或配对 token;Windows faultdeck CLI 增 remote 子命令(发现/认证/下发/回滚);验收:Windows 控制端对 Linux 目标实测断网/延迟/丢包三场景,回滚后管理通道自证畅通。前置:FD-P1-2 netem adapter。
 - [ ] FD-ARCH-1 [P1] agent 双向连接模式:Mode A=agent 监听(目标有公网 IP,控制端拨入)+Mode B=控制端监听(目标 NAT 后,agent 反向拨号,长连隧道断线重连);单条 TCP 长连接(WebSocket/gRPC stream)承载指令+事件+日志+报告回传,两模式共用协议对称;安全=双向 token+mTLS 可选,agent 默认只信配置控制端指纹。前置:FD-P1-4。
 - [ ] FD-REPORT-1 [P1] 报告体系(关键功能):报告=实验唯一事实源——场景 YAML+hash、注入参数与故障状态时间线、恢复验证证据、外部断言结果、一键重现命令;双格式 JSON(CI 回归对比)+HTML(人看时间线图);历史对比=同场景多次运行 diff(回归验证核心);双向模式下报告均可经隧道回传。P0 的 JSON 报告为基础,增强部分排 P2 初。
+- [ ] FD-ARCH-2 [P1] Coordinator 协调者模式(多目标推荐形态):协调者部署在 agent 与控制端都可达处;agent 注册(身份/能力/在线状态,心跳保活),控制端附着发起实验,协调者路由指令与报告回传并存档;解决双向 NAT(两端仅出站连接)、多目标舰队视图、报告集中存档;P3 Web UI 天然部署于协调者。与 Mode A/B 递进:单目标直连用 A/B,多目标/团队用协调者;舰队场景协调者可运行于 meshlet 虚拟网之上(自家产品闭环)。安全:双向 token,mTLS 可选,agent 只信协调者指纹。
