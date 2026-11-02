@@ -1,0 +1,11 @@
+[package]
+name = "faultdeck-netem"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+ipnet = { workspace = true, features = ["serde"] }
+serde.workspace = true
+thiserror.workspace = true
