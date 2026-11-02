@@ -2,3 +2,25 @@
 - [ ] FD-ARCH-1 [P1] agent 双向连接模式:Mode A=agent 监听(目标有公网 IP,控制端拨入)+Mode B=控制端监听(目标 NAT 后,agent 反向拨号,长连隧道断线重连);单条 TCP 长连接(WebSocket/gRPC stream)承载指令+事件+日志+报告回传,两模式共用协议对称;安全=双向 token+mTLS 可选,agent 默认只信配置控制端指纹。前置:FD-P1-4。
 - [ ] FD-REPORT-1 [P1] 报告体系(关键功能):报告=实验唯一事实源——场景 YAML+hash、注入参数与故障状态时间线、恢复验证证据、外部断言结果、一键重现命令;双格式 JSON(CI 回归对比)+HTML(人看时间线图);历史对比=同场景多次运行 diff(回归验证核心);双向模式下报告均可经隧道回传。P0 的 JSON 报告为基础,增强部分排 P2 初。
 - [ ] FD-ARCH-2 [P1] Coordinator 协调者模式(多目标推荐形态):协调者部署在 agent 与控制端都可达处;agent 注册(身份/能力/在线状态,心跳保活),控制端附着发起实验,协调者路由指令与报告回传并存档;解决双向 NAT(两端仅出站连接)、多目标舰队视图、报告集中存档;P3 Web UI 天然部署于协调者。与 Mode A/B 递进:单目标直连用 A/B,多目标/团队用协调者;舰队场景协调者可运行于 meshlet 虚拟网之上(自家产品闭环)。安全:双向 token,mTLS 可选,agent 只信协调者指纹。
+
+<!-- 审核记录 2026-11-03 a47ead12..HEAD (commit 8d21b19) crates/netem + CI + workspace 配置 -->
+- [x] 审核发现：混合地址族 Target（source=IPv4 + destination=IPv6）会在 validate() 通过后于 pilot_filter() 返回 UnsupportedIpv6，触发 apply_commands() 的 `.expect("validated injection")` panic——因 validate() 仅用 source.or(destination) 检查单一地址族；Injection 派生 Deserialize，不可信输入可触发该 panic（DoS）。已用临时测试复现（crates/netem/src/lib.rs:365-369,220,259-293）
+  - 属实并已修复：validate() 现逐个检查 source/destination，任一 V6 即拒；新增 rejects_mixed_family_target 测试。commit fd-audit-netem `crates/netem/src/lib.rs:471-492`（validate）、`crates/netem/src/lib.rs:601-607`（rejects_mixed_family_target）。
+- [x] 审核发现：default_device() 解析 /proc/net/route 用错列——columns[3] 实为 Flags（十六进制），并非 Metric（正确列是 columns[6]）；本机 Flags 如 "0001"/"0003" 可被 parse 成功，导致"最优路由"按 Flags 而非 Metric 选取，且未按默认路由（Destination=00000000）或 UP 过滤，通常返回错误接口（如首个 bridge/VPN 设备）（crates/netem/src/lib.rs:388-409）
+  - 属实并已修复：default_device_from_routes() 现校验 Destination=00000000、按 16 进制解析 Flags 且要求 UP 位、正确取 columns[6] Metric；新增 parses_default_route_metric 与 ignores_down_and_nondefault_routes。commit fd-audit-netem `crates/netem/src/lib.rs:535-566`、`crates/netem/src/lib.rs:627-641`。
+- [x] 审核发现：inject() 在 apply 全部命令后立即调用 self.rollback()，故障被应用后瞬间拆除，注入的 netem 故障从未真正持续生效；若意图是"应用并驻留"则为功能缺陷（crates/netem/src/lib.rs:194-202）
+  - 属实并已修复：inject() 不再自动 rollback，应用后故障驻留，由调用方显式 rollback() 拆除；新增 inject_applies_and_persists 断言无 qdisc del。commit fd-audit-netem `crates/netem/src/lib.rs:250-267`、`crates/netem/tests/adapter.rs:62-83`。
+- [x] 审核发现：inject()/apply 中途某条命令失败时直接 `?` 返回，但开头 rollback_command() 已 `tc qdisc del dev <if> root` 破坏性移除接口原有 qdisc，失败后无任何恢复，接口遗留无 root qdisc 状态（crates/netem/src/lib.rs:194-202,218-225）
+  - 属实并已修复：inject() 先 preflight 拒绝外部 root qdisc；命令失败时 rollback_cleanup() 仅删除自家 100: 根 qdisc；新增 inject_partial_failure_rolls_back_created_qdisc。commit fd-audit-netem `crates/netem/src/lib.rs:250-267,289-306`、`crates/netem/tests/adapter.rs:85-110`。
+- [x] 审核发现：rollback() 用错误消息子串（"Cannot find"/"Cannot delete"/"No such file"/"No such device"）抑制失败，脆且易误吞真实错误——例如 PATH 中无 tc 二进制时 spawn 报 "No such file or directory"，被当作回滚成功而静默通过（crates/netem/src/lib.rs:204-216）
+  - 属实并已修复：spawn 失败按 ErrorKind::NotFound 映射为 ProgramMissing（不再落入字符串抑制）；回滚仅抑制 tc 明确“找不到”消息；新增 rollback_suppresses_only_tc_not_found。commit fd-audit-netem `crates/netem/src/lib.rs:185-200,269-287,518-522`、`crates/netem/src/lib.rs:645-652`。
+- [x] 审核发现：rollback_command()/root_qdisc() 无条件 `tc qdisc del dev <if> root` 删除接口现有 root qdisc（如既有 htb/fq_codel 流量整形），对共享接口属破坏性覆盖，无任何"仅删除自身 handle"的保护（crates/netem/src/lib.rs:234-257）
+  - 属实并已修复：inject()/rollback() 先 `tc qdisc show` 检查根 qdisc，仅当 handle 以 100: 开头（自家）才删除/复用，外部 fq_codel/htb 一律拒绝（ExistingRootQdisc）；新增 rollback_refuses_foreign_root_qdisc。commit fd-audit-netem `crates/netem/src/lib.rs:289-306,525-532`、`crates/netem/tests/adapter.rs:149-168`。
+- [x] 审核发现：LatencySpec 无上限校验，milliseconds=u64::MAX 会生成 `delay 18446744073709551615ms` 传给 tc，运行时才失败；LossSpec 的 NaN/∞ 已被 contains() 覆盖（0<percent<=100 正确拒绝 0/-0/NaN/∞），但延迟缺少等价守卫（crates/netem/src/lib.rs:356-363）
+  - 属实并已修复：validate() 现要求 0 < milliseconds <= MAX_LATENCY_MS(24h)，超限返回 InvalidLatency；新增 rejects_latency_zero_and_overflow。commit fd-audit-netem `crates/netem/src/lib.rs:9,474-486`、`crates/netem/src/lib.rs:609-620`。
+- [x] 审核发现：测试缺口——无任何测试覆盖 mixed-family panic 路径（source=V4+dest=V6）、default_device()（含错误列索引，完全未测）、rollback() 错误抑制分支、SystemCommandExecutor 的 dry_run/非 Linux 分支、inject 部分失败恢复；CI 亦无真实 tc 集成测试（crates/netem/tests/adapter.rs）
+  - 属实并已修复：新增 6 项单测+5 项集成测试覆盖上述路径（mixed-family、default_device 列/UP/默认路由、rollback 抑制、inject 部分失败恢复、外部 root qdisc 拒绝）。CI 真实 tc 集成测试仍缺失，标记 FD-AUDIT-TC-IT 后续跟踪（需真实 netns/root 环境，不属本仓库 CI 范围）。commit fd-audit-netem `crates/netem/src/lib.rs:596-663`、`crates/netem/tests/adapter.rs:62-168`。
+- [x] 审核发现：lib.rs 顶部 use std::net::{Ipv4Addr,Ipv6Addr} 与 ipnet::Ipv4Net 仅为 `_type_assertions` 占位（#[allow(dead_code)]）而导入，属死代码/无用依赖引用（crates/netem/src/lib.rs:2-5,411-412）
+  - 属实并已修复：删除占位 use 与 _type_assertions，导入收敛为实际使用项。commit fd-audit-netem `crates/netem/src/lib.rs:1-5`（重写后无占位导入）。
+- [x] 审核发现：本轮 diff 未见命令注入/反序列化越界/资源泄漏问题——tc 以 argv 直接 exec（无 shell 拼接，interface 注入不可行），Injection/LossSpec/LatencySpec 均为简单值类型无递归/无共享引用，无文件句柄或网络资源滞留；安全与泄漏层面结论为通过。
+  - 属实（审核通过结论，非缺陷）。复核确认：tc 以 argv 直接 exec 无 shell 拼接、类型均为简单值无递归引用、无资源滞留。该项维持通过结论，无需改动。commit fd-audit-netem `crates/netem/src/lib.rs`（本轮审计通过）。

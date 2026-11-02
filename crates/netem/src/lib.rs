@@ -1,12 +1,14 @@
 use std::fmt;
-use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 
-use ipnet::{IpNet, Ipv4Net};
+use ipnet::IpNet;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub const PILOT_QDISC_HANDLE: u32 = 100;
+pub const MAX_LATENCY_MS: u64 = 86_400_000; // 24h
+const DEFAULT_ROUTE_DESTINATION: &str = "00000000";
+const ROUTE_FLAG_UP: u32 = 0x0001;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LatencySpec {
@@ -71,12 +73,24 @@ pub enum AdapterError {
         arguments: String,
         message: String,
     },
+    #[error("tc binary missing: {program}")]
+    ProgramMissing { program: String },
     #[error("fault target is empty")]
     EmptyTarget,
     #[error("invalid loss percent {percent}; expected 0 < percent <= 100")]
     InvalidLossPercent { percent: f64 },
+    #[error("invalid latency {milliseconds}ms; expected 0 < milliseconds <= {MAX_LATENCY_MS}")]
+    InvalidLatency { milliseconds: u64 },
     #[error("IPv6 target is unsupported by the current tc adapter")]
     UnsupportedIpv6,
+    #[error(
+        "interface {interface} already has root qdisc '{kind}' (handle {handle}); refusing to overwrite"
+    )]
+    ExistingRootQdisc {
+        interface: String,
+        kind: String,
+        handle: String,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, AdapterError>;
@@ -100,11 +114,29 @@ impl fmt::Display for TcCommand {
 
 pub trait CommandExecutor {
     fn run(&self, command: &TcCommand) -> Result<()>;
+
+    /// Capture command stdout for preflight inspection. The default treats the
+    /// command as producing no output (used by closures and tests); real system
+    /// execution overrides this.
+    fn run_capture(&self, _command: &TcCommand) -> Result<String> {
+        Ok(String::new())
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SystemCommandExecutor {
     pub dry_run: bool,
+}
+
+impl SystemCommandExecutor {
+    fn spawn(
+        &self,
+        command: &TcCommand,
+    ) -> std::result::Result<std::process::Output, std::io::Error> {
+        std::process::Command::new(&command.program)
+            .args(&command.arguments)
+            .output()
+    }
 }
 
 impl CommandExecutor for SystemCommandExecutor {
@@ -113,16 +145,9 @@ impl CommandExecutor for SystemCommandExecutor {
         if self.dry_run {
             return Ok(());
         }
-
-        let output = std::process::Command::new(&command.program)
-            .args(&command.arguments)
-            .output()
-            .map_err(|error| AdapterError::Command {
-                program: command.program.display().to_string(),
-                arguments: command.arguments.join(" "),
-                message: error.to_string(),
-            })?;
-
+        let output = self
+            .spawn(command)
+            .map_err(|error| map_spawn_error(command, error))?;
         if output.status.success() {
             Ok(())
         } else {
@@ -144,6 +169,39 @@ impl CommandExecutor for SystemCommandExecutor {
                 arguments: String::new(),
                 message: "tc is only available on Linux".into(),
             })
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn run_capture(&self, command: &TcCommand) -> Result<String> {
+        if self.dry_run {
+            return Ok(String::new());
+        }
+        let output = self
+            .spawn(command)
+            .map_err(|error| map_spawn_error(command, error))?;
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        } else {
+            Err(AdapterError::Command {
+                program: command.program.display().to_string(),
+                arguments: command.arguments.join(" "),
+                message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            })
+        }
+    }
+}
+
+fn map_spawn_error(command: &TcCommand, error: std::io::Error) -> AdapterError {
+    if error.kind() == std::io::ErrorKind::NotFound {
+        AdapterError::ProgramMissing {
+            program: command.program.display().to_string(),
+        }
+    } else {
+        AdapterError::Command {
+            program: command.program.display().to_string(),
+            arguments: command.arguments.join(" "),
+            message: error.to_string(),
         }
     }
 }
@@ -186,37 +244,85 @@ where
 
     pub fn plan(&self, injection: &Injection) -> Result<Vec<TcCommand>> {
         validate(injection)?;
-        let mut commands = self.apply_commands(injection);
-        commands.push(self.rollback_command());
-        Ok(commands)
+        Ok(self.apply_commands(injection))
     }
 
     pub fn inject(&self, injection: &Injection) -> Result<Vec<TcCommand>> {
         validate(injection)?;
-        let commands = self.apply_commands(injection);
-        for command in &commands {
-            self.executor.run(command)?;
+        self.preflight()?;
+
+        let mut commands = self.apply_commands(injection);
+        if let Some(cleanup) = self.cleanup_command_for_leftover()? {
+            commands.insert(0, cleanup);
         }
-        self.rollback()?;
+
+        for command in &commands {
+            if let Err(error) = self.executor.run(command) {
+                // Best-effort cleanup: remove the pilot root qdisc we created.
+                let _ = self.rollback_cleanup();
+                return Err(error);
+            }
+        }
         Ok(commands)
     }
 
     pub fn rollback(&self) -> Result<Vec<TcCommand>> {
+        let output = self.executor.run_capture(&self.show_command())?;
+        if let Some((kind, handle)) = parse_root_qdisc(&output) {
+            if !handle.starts_with(&format!("{PILOT_QDISC_HANDLE}:")) {
+                return Err(AdapterError::ExistingRootQdisc {
+                    interface: self.interface.clone(),
+                    kind,
+                    handle,
+                });
+            }
+        }
         let command = self.rollback_command();
         match self.executor.run(&command) {
             Ok(()) => {}
-            Err(AdapterError::Command { message, .. })
-                if message.contains("Cannot find")
-                    || message.contains("Cannot delete")
-                    || message.contains("No such file")
-                    || message.contains("No such device") => {}
+            Err(AdapterError::Command { message, .. }) if is_tc_not_found_message(&message) => {}
             Err(error) => return Err(error),
         }
         Ok(vec![command])
     }
 
+    fn preflight(&self) -> Result<()> {
+        let output = self.executor.run_capture(&self.show_command())?;
+        if let Some((kind, handle)) = parse_root_qdisc(&output) {
+            if !handle.starts_with(&format!("{PILOT_QDISC_HANDLE}:")) {
+                return Err(AdapterError::ExistingRootQdisc {
+                    interface: self.interface.clone(),
+                    kind,
+                    handle,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn cleanup_command_for_leftover(&self) -> Result<Option<TcCommand>> {
+        let output = self.executor.run_capture(&self.show_command())?;
+        if let Some((_, handle)) = parse_root_qdisc(&output) {
+            if handle.starts_with(&format!("{PILOT_QDISC_HANDLE}:")) {
+                return Ok(Some(self.rollback_command()));
+            }
+        }
+        Ok(None)
+    }
+
+    fn rollback_cleanup(&self) -> Result<()> {
+        let command = self.rollback_command();
+        match self.executor.run(&command) {
+            Ok(()) => Ok(()),
+            Err(AdapterError::Command { message, .. }) if is_tc_not_found_message(&message) => {
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     fn apply_commands(&self, injection: &Injection) -> Vec<TcCommand> {
-        let mut commands = vec![self.rollback_command(), self.root_qdisc()];
+        let mut commands = vec![self.root_qdisc()];
         commands.push(self.pilot_filter(injection).expect("validated injection"));
         commands.extend(self.netem_commands(injection));
         commands.push(self.default_qdisc());
@@ -229,6 +335,15 @@ where
             program: PathBuf::from("tc"),
             arguments,
         }
+    }
+
+    fn show_command(&self) -> TcCommand {
+        self.command(vec![
+            "qdisc".into(),
+            "show".into(),
+            "dev".into(),
+            self.interface.clone(),
+        ])
     }
 
     fn rollback_command(&self) -> TcCommand {
@@ -362,11 +477,26 @@ fn validate(injection: &Injection) -> Result<()> {
         }
     }
 
-    match injection.target.source.or(injection.target.destination) {
-        Some(IpNet::V6(_)) => Err(AdapterError::UnsupportedIpv6),
-        Some(_) => Ok(()),
-        None => Err(AdapterError::EmptyTarget),
+    if let FaultSpec::Latency(ref spec) = injection.fault {
+        if spec.milliseconds == 0 || spec.milliseconds > MAX_LATENCY_MS {
+            return Err(AdapterError::InvalidLatency {
+                milliseconds: spec.milliseconds,
+            });
+        }
     }
+
+    let target = &injection.target;
+    let mut has_family = false;
+    for network in [target.source, target.destination].into_iter().flatten() {
+        has_family = true;
+        if let IpNet::V6(_) = network {
+            return Err(AdapterError::UnsupportedIpv6);
+        }
+    }
+    if !has_family {
+        return Err(AdapterError::EmptyTarget);
+    }
+    Ok(())
 }
 
 fn match_ip_arg(field: &str, network: IpNet) -> Result<Vec<String>> {
@@ -385,16 +515,52 @@ fn format_percent(percent: f64) -> String {
     format!("{percent:.3}")
 }
 
+fn is_tc_not_found_message(message: &str) -> bool {
+    message.contains("Cannot find")
+        || message.contains("Cannot delete")
+        || message.contains("No such file")
+        || message.contains("No such device")
+}
+
+fn parse_root_qdisc(output: &str) -> Option<(String, String)> {
+    for line in output.lines() {
+        // Typical: "qdisc prio 100: root refcnt 2 ..."
+        let mut tokens = line.split_whitespace();
+        if tokens.next() != Some("qdisc") {
+            continue;
+        }
+        let kind = tokens.next()?.to_string();
+        let handle = tokens.next()?.to_string();
+        if tokens.any(|t| t == "root") {
+            return Some((kind, handle));
+        }
+    }
+    None
+}
+
 pub fn default_device() -> anyhow::Result<String> {
     let routes = std::fs::read_to_string("/proc/net/route")?;
+    default_device_from_routes(&routes)
+}
+
+fn default_device_from_routes(routes: &str) -> anyhow::Result<String> {
     let mut best: Option<(u32, String)> = None;
     for line in routes.lines().skip(1) {
         let columns: Vec<&str> = line.split_whitespace().collect();
-        if columns.len() < 4 {
+        if columns.len() < 8 {
             continue;
         }
-
-        let Ok(metric) = columns[3].parse::<u32>() else {
+        // columns: Iface Destination Gateway Flags RefCnt Use Metric Mask ...
+        if columns[1] != DEFAULT_ROUTE_DESTINATION {
+            continue;
+        }
+        let Ok(flags) = u32::from_str_radix(columns[3], 16) else {
+            continue;
+        };
+        if flags & ROUTE_FLAG_UP == 0 {
+            continue;
+        }
+        let Ok(metric) = columns[6].parse::<u32>() else {
             continue;
         };
         let interface = columns[0].to_string();
@@ -405,8 +571,92 @@ pub fn default_device() -> anyhow::Result<String> {
     }
 
     best.map(|(_, interface)| interface)
-        .ok_or_else(|| anyhow::anyhow!("no IPv4 route found in /proc/net/route"))
+        .ok_or_else(|| anyhow::anyhow!("no default IPv4 route found in /proc/net/route"))
 }
 
-#[allow(dead_code)]
-fn _type_assertions(_: Ipv4Addr, _: Ipv6Addr, _: Ipv4Net) {}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ipnet::IpNet;
+    use std::str::FromStr;
+
+    fn latency(ms: u64) -> Injection {
+        Injection {
+            fault: FaultSpec::Latency(LatencySpec { milliseconds: ms }),
+            target: Target::destination_port(IpNet::from_str("192.0.2.0/24").unwrap(), 7000),
+        }
+    }
+
+    #[test]
+    fn rejects_mixed_family_target() {
+        let mixed = Injection {
+            fault: FaultSpec::Loss(LossSpec { percent: 1.0 }),
+            target: Target {
+                source: Some(IpNet::from_str("192.0.2.0/24").unwrap()),
+                destination: Some(IpNet::from_str("2001:db8::/32").unwrap()),
+                destination_port: None,
+            },
+        };
+        assert!(matches!(
+            validate(&mixed),
+            Err(AdapterError::UnsupportedIpv6)
+        ));
+    }
+
+    #[test]
+    fn rejects_latency_zero_and_overflow() {
+        assert!(matches!(
+            validate(&latency(0)),
+            Err(AdapterError::InvalidLatency { .. })
+        ));
+        assert!(matches!(
+            validate(&latency(u64::MAX)),
+            Err(AdapterError::InvalidLatency { .. })
+        ));
+        assert!(matches!(
+            validate(&latency(MAX_LATENCY_MS + 1)),
+            Err(AdapterError::InvalidLatency { .. })
+        ));
+        assert!(validate(&latency(1)).is_ok());
+    }
+
+    #[test]
+    fn parses_default_route_metric() {
+        let routes = "\
+Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n\
+eth0\t00000000\t01020304\t0003\t0\t0\t100\t00000000\t0\t0\t0\n\
+eth1\t00000000\t01020305\t0001\t0\t0\t50\t00000000\t0\t0\t0\n\
+vpn0\t00000000\t01020306\t0001\t0\t0\t200\t00000000\t0\t0\t0\n\
+eth2\t000A0000\t00000000\t0001\t0\t0\t10\t0000FFFF\t0\t0\t0\n";
+        assert_eq!(default_device_from_routes(routes).unwrap(), "eth1");
+    }
+
+    #[test]
+    fn ignores_down_and_nondefault_routes() {
+        let routes = "\
+Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n\
+eth0\t00000000\t01020304\t0000\t0\t0\t1\t00000000\t0\t0\t0\n\
+eth1\t000A0000\t00000000\t0001\t0\t0\t1\t0000FFFF\t0\t0\t0\n";
+        assert!(default_device_from_routes(routes).is_err());
+    }
+
+    #[test]
+    fn rollback_suppresses_only_tc_not_found() {
+        let adapter = NetemAdapter::with_executor("eth0", |_: &TcCommand| {
+            Err(AdapterError::ProgramMissing {
+                program: "tc".into(),
+            })
+        });
+        let result = adapter.rollback();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_root_qdisc_detects_own_and_foreign() {
+        let own = "qdisc prio 100: root refcnt 2 tc 100: prio bands 3\n";
+        assert!(parse_root_qdisc(own).unwrap().1.starts_with("100:"));
+        let foreign = "qdisc fq_codel 1: root refcnt 2\n";
+        assert_eq!(parse_root_qdisc(foreign).unwrap().0, "fq_codel");
+        assert!(parse_root_qdisc("").is_none());
+    }
+}
