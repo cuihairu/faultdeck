@@ -48,3 +48,8 @@ tc/netem adapter (netlink directly, not shelling out to tc), TCP/UDP, traffic se
 
 - Available in P0: run the faultdeck CLI on Windows, run toxiproxy-server on the Linux target, inject latency/cut/blackhole/bandwidth faults over Toxiproxy's REST API (control box and target only need network reachability — no SSH, no root, no NIC manipulation).
 - P1 upgrade: tc/netem-class faults (real packet loss / jitter / partition) — recommended: a resident faultdeck-agent on the Linux target (local port listens for commands from the control box, applies netem/iptables locally, with safety guard: management subnet allowlist, never kills management traffic); SSH exec as fallback. The former P3 "remote agent" pulls forward into P1.
+
+## Connection direction & reports (added 2026-11-02)
+
+- Agent dual mode: Mode A = agent listens (target publicly reachable); Mode B = controller listens (agent dials out through NAT, long-lived tunnel, auto-reconnect). A single TCP stream carries commands/events/logs/reports — protocol symmetric across modes.
+- Reports are a core feature: single source of truth (YAML+hash, injection timeline, recovery evidence, assertion results, one-click replay), JSON + HTML formats, historical diff for regression verification.
