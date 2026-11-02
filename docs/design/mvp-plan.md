@@ -43,3 +43,8 @@ Date: 2026-11-02 · Source: ChatGPT architecture review (archive in docs/review/
 ## P1 preview
 
 tc/netem adapter (netlink directly, not shelling out to tc), TCP/UDP, traffic selection, burst loss, reordering, netns isolation; test environments use dedicated netns to keep the host clean.
+
+## Cross-machine control (added 2026-11-02: Windows control box → Linux target)
+
+- Available in P0: run the faultdeck CLI on Windows, run toxiproxy-server on the Linux target, inject latency/cut/blackhole/bandwidth faults over Toxiproxy's REST API (control box and target only need network reachability — no SSH, no root, no NIC manipulation).
+- P1 upgrade: tc/netem-class faults (real packet loss / jitter / partition) — recommended: a resident faultdeck-agent on the Linux target (local port listens for commands from the control box, applies netem/iptables locally, with safety guard: management subnet allowlist, never kills management traffic); SSH exec as fallback. The former P3 "remote agent" pulls forward into P1.
