@@ -173,7 +173,7 @@ fn main() -> anyhow::Result<()> {
                         injection: injection.clone(),
                     };
                     let mut report = RunReport::new(&scenario, faultdeck_report::now_ms());
-                    report.replay_command = format!(
+                    let mut replay = format!(
                         "faultdeck remote inject --fault {} --destination {} --host {} --port {}",
                         match fault {
                             FaultKind::Latency => "latency",
@@ -184,6 +184,22 @@ fn main() -> anyhow::Result<()> {
                         host,
                         port,
                     );
+                    if let Some(token) = &token {
+                        replay.push_str(&format!(" --token {token}"));
+                    }
+                    if let Some(ms) = milliseconds {
+                        replay.push_str(&format!(" --milliseconds {ms}"));
+                    }
+                    if let Some(pct) = percent {
+                        replay.push_str(&format!(" --percent {pct}"));
+                    }
+                    if let Some(port_spec) = port_spec {
+                        replay.push_str(&format!(" --port-spec {port_spec}"));
+                    }
+                    if let Some(name) = &scenario_name {
+                        replay.push_str(&format!(" --scenario-name {name}"));
+                    }
+                    report.replay_command = replay;
                     std::fs::write(&report_json, report.to_json()?)?;
                     if let Some(html) = report_html {
                         std::fs::write(&html, report.to_html())?;
