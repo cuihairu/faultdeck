@@ -128,6 +128,22 @@ fn send(
     }
 }
 
+/// Quote a value for safe interpolation into a `sh -c` command line. Values
+/// containing shell metacharacters (spaces, quotes, globs, substitutions,
+/// etc.) must be single-quoted so the generated replay_command stays
+/// executable verbatim.
+fn shell_quote(value: &str) -> String {
+    if !value.is_empty()
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_-./:@%+=".contains(&b))
+    {
+        value.to_string()
+    } else {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -194,12 +210,12 @@ fn main() -> anyhow::Result<()> {
                             FaultKind::Loss => "loss",
                             FaultKind::Disconnect => "disconnect",
                         },
-                        destination,
-                        host,
+                        shell_quote(&destination),
+                        shell_quote(&host),
                         port,
                     );
                     if let Some(token) = &token {
-                        replay.push_str(&format!(" --token {token}"));
+                        replay.push_str(&format!(" --token {}", shell_quote(token)));
                     }
                     if let Some(ms) = milliseconds {
                         replay.push_str(&format!(" --milliseconds {ms}"));
@@ -211,7 +227,7 @@ fn main() -> anyhow::Result<()> {
                         replay.push_str(&format!(" --port-spec {port_spec}"));
                     }
                     if let Some(name) = &scenario_name {
-                        replay.push_str(&format!(" --scenario-name {name}"));
+                        replay.push_str(&format!(" --scenario-name {}", shell_quote(name)));
                     }
                     report.replay_command = replay;
                     std::fs::write(&report_json, report.to_json()?)?;
