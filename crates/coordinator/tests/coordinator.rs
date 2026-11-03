@@ -129,6 +129,10 @@ fn wrong_token_rejected() {
         coordinator.handle_control_command(&AgentCommand::ListAgents, None),
         Err(CoordinatorError::Unauthorized)
     ));
+    assert!(matches!(
+        coordinator.handle_control_command(&AgentCommand::ListAgents, Some("secret")),
+        Ok(AgentResponse::Agents { .. })
+    ));
     assert!(coordinator
         .handle_control_command(&AgentCommand::ListAgents, Some("secret"))
         .is_ok());

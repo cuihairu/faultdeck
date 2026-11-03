@@ -116,7 +116,16 @@ impl Coordinator {
     pub fn authorize(&self, token: Option<&str>) -> Result<()> {
         match &self.token {
             None => Ok(()),
-            Some(expected) if token == Some(expected.as_str()) => Ok(()),
+            // Constant-time comparison to match faultdeck_agent::token_ok
+            // (commit 4dbd049); a plain == would leak the token length and
+            // byte positions via timing, and was inconsistent with the agent.
+            Some(expected)
+                if token
+                    .map(|t| faultdeck_agent::constant_time_eq(t.as_bytes(), expected.as_bytes()))
+                    .unwrap_or(false) =>
+            {
+                Ok(())
+            }
             _ => Err(CoordinatorError::Unauthorized),
         }
     }
