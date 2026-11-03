@@ -114,6 +114,11 @@ impl Iptables {
             // Only restrict to the destination port when the spec says so.
             if !all_traffic {
                 if let Some(port) = target.destination_port {
+                    // iptables requires a protocol match for --dport; without
+                    // -p tcp the rule fails with "unknown option --dport" and
+                    // the port-level disconnect rule would never install.
+                    args.push("-p".into());
+                    args.push("tcp".into());
                     args.push("--dport".into());
                     args.push(port.to_string());
                 }
