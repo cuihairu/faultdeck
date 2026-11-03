@@ -477,8 +477,13 @@ fn parse_root_qdisc(output: &str) -> Option<(String, String)> {
         if tokens.next() != Some("qdisc") {
             continue;
         }
-        let kind = tokens.next()?.to_string();
-        let handle = tokens.next()?.to_string();
+        let (Some(kind), Some(handle), rest) = (tokens.next(), tokens.next(), tokens) else {
+            // Truncated line: skip instead of aborting so later valid lines
+            // (e.g. a foreign root qdisc) are still detected.
+            continue;
+        };
+        let (kind, handle) = (kind.to_string(), handle.to_string());
+        let mut tokens = rest;
         if tokens.any(|t| t == "root") {
             return Some((kind, handle));
         }
@@ -604,5 +609,15 @@ eth1\t000A0000\t00000000\t0001\t0\t0\t1\t0000FFFF\t0\t0\t0\n";
         let foreign = "qdisc fq_codel 1: root refcnt 2\n";
         assert_eq!(parse_root_qdisc(foreign).unwrap().0, "fq_codel");
         assert!(parse_root_qdisc("").is_none());
+    }
+
+    #[test]
+    fn parse_root_qdisc_skips_truncated_line() {
+        let output = "qdisc prio\nqdisc fq_codel 1: root refcnt 2\n";
+        assert_eq!(
+            parse_root_qdisc(output).unwrap().0,
+            "fq_codel",
+            "truncated line must not abort scanning"
+        );
     }
 }

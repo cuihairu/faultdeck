@@ -49,7 +49,8 @@
   - 属实并已修复：inject() 现单次 preflight 返回是否残留自家 qdisc 并据此插入清理命令，删除重复 show；失败清理仅在已成功创建自家 root qdisc 后执行（own_qdisc_created），外部 qdisc 在 TOCTOU 窗口出现导致 add 失败时不再误删。新增 inject_does_not_delete_foreign_qdisc_on_toctou_failure 测试。commit 4c34db9 crates/netem/src/lib.rs、crates/netem/tests/adapter.rs。
 - [x] 审核发现：rollback()/preflight() 开头 run_capture(tc qdisc show) 对接口缺失/外部 qdisc 的 "No such device" 等消息硬返回 Err，与随后 del 命令对同类消息用 is_tc_not_found_message 容忍的策略不一致——接口消失时 rollback 不再幂等（crates/netem/src/lib.rs:220-238,457-462）
   - 属实并已修复：rollback() 对 run_capture 的 "Cannot find"/"No such device" 等消息按 is_tc_not_found_message 容忍并跳过检查，与 del 的容忍策略一致；接口消失时回滚幂等成功。新增 rollback_is_idempotent_when_device_missing 测试。commit c42911d crates/netem/src/lib.rs、crates/netem/tests/adapter.rs。
-- [ ] 审核发现：parse_root_qdisc 在循环内用 tokens.next()? 遇截断 "qdisc" 行即返回 None 提前终止整段扫描，后续外部 root qdisc 行会被漏检（crates/netem/src/lib.rs:464-477）
+- [x] 审核发现：parse_root_qdisc 在循环内用 tokens.next()? 遇截断 "qdisc" 行即返回 None 提前终止整段扫描，后续外部 root qdisc 行会被漏检（crates/netem/src/lib.rs:464-477）
+  - 属实并已修复：parse_root_qdisc 对截断行改为 continue 跳过，不提前终止扫描；后续有效 root qdisc 仍被检测。新增 parse_root_qdisc_skips_truncated_line 测试。commit 08fbe2b crates/netem/src/lib.rs。
 - [ ] 审核发现：validate() 将 CoreError::OverlapsManagement 映射为 AdapterError::EmptyTarget（"fault target is empty"）——错误语义误导，且 core 当前不产生该错误，属死分支（crates/netem/src/lib.rs:437）
 - [ ] 审核发现：token 用非常量时间 == 比较且明文经 TCP 传输（mTLS 未实现），bind 0.0.0.0 且未配 token 时无告警（仅 management 为空有告警）——agent 可被远程无鉴权控制（crates/agent/src/lib.rs:67-70；crates/agent/src/main.rs:59-62）
 - [ ] 审核发现：wire 协议脆弱——即使未配置 token，首个空格仍被当作 token 分隔符，含空格的 payload（如 pretty-printed JSON）会被截断破坏；超限 payload 与 JSON 解码失败路径直接返回 Err 不写响应，客户端只见 EOF+解码错误无明确消息（crates/agent/src/lib.rs:188-207）
