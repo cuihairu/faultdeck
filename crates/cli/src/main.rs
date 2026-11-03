@@ -149,7 +149,11 @@ fn main() -> anyhow::Result<()> {
                         percent: percent
                             .ok_or_else(|| anyhow::anyhow!("--percent required for loss"))?,
                     }),
-                    FaultKind::Disconnect => FaultSpec::Disconnect(Default::default()),
+                    FaultKind::Disconnect => {
+                        FaultSpec::Disconnect(faultdeck_core::DisconnectSpec {
+                            all_traffic: port_spec.is_none(),
+                        })
+                    }
                 };
                 let injection = Injection {
                     fault: fault_spec,

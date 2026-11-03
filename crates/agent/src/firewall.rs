@@ -83,22 +83,36 @@ impl Iptables {
     pub fn apply(&self, injection: &Injection) -> Result<()> {
         self.ensure_chain()?;
         let target = &injection.target;
+        let all_traffic = match &injection.fault {
+            FaultSpec::Disconnect(spec) => spec.all_traffic,
+            _ => true,
+        };
         for network in target.networks() {
             let IpNet::V4(net) = network else {
                 return Err(FirewallError::TargetNotV4);
             };
             let addr = net.addr();
             let prefix = net.prefix_len();
-            self.run(&[
-                "-A",
-                CHAIN,
-                "-t",
-                "mangle",
-                "-d",
-                &format!("{addr}/{prefix}"),
-                "-j",
-                "DROP",
-            ])?;
+            let mut args: Vec<String> =
+                vec!["-A".into(), CHAIN.into(), "-t".into(), "mangle".into()];
+            // source is a source match (-s), destination a dest match (-d).
+            if target.source == Some(*network) {
+                args.push("-s".into());
+            } else {
+                args.push("-d".into());
+            }
+            args.push(format!("{addr}/{prefix}"));
+            // Only restrict to the destination port when the spec says so.
+            if !all_traffic {
+                if let Some(port) = target.destination_port {
+                    args.push("--dport".into());
+                    args.push(port.to_string());
+                }
+            }
+            args.push("-j".into());
+            args.push("DROP".into());
+            let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            self.run(&refs)?;
         }
         Ok(())
     }
