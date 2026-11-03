@@ -201,17 +201,26 @@ where
 
     pub fn inject(&self, injection: &Injection) -> Result<Vec<TcCommand>> {
         validate(injection)?;
-        self.preflight()?;
-
+        let leftover = self.preflight()?;
         let mut commands = self.apply_commands(injection);
-        if let Some(cleanup) = self.cleanup_command_for_leftover()? {
-            commands.insert(0, cleanup);
+        if leftover {
+            commands.insert(0, self.rollback_command());
         }
-
+        let mut own_qdisc_created = false;
         for command in &commands {
             if let Err(error) = self.executor.run(command) {
-                let _ = self.rollback_cleanup();
+                // Only clean up a root qdisc we actually created. If the very
+                // first (root_qdisc) command failed because a foreign qdisc
+                // appeared in the TOCTOU window, we must NOT delete it.
+                if own_qdisc_created {
+                    let _ = self.rollback_cleanup();
+                }
                 return Err(error);
+            }
+            if !own_qdisc_created {
+                // The first command is either a leftover cleanup or the root
+                // qdisc; once it succeeds our own 100: qdisc is in place.
+                own_qdisc_created = true;
             }
         }
         Ok(commands)
@@ -237,10 +246,13 @@ where
         Ok(vec![command])
     }
 
-    fn preflight(&self) -> Result<()> {
+    fn preflight(&self) -> Result<bool> {
         let output = self.executor.run_capture(&self.show_command())?;
         if let Some((kind, handle)) = parse_root_qdisc(&output) {
-            if !handle.starts_with(&format!("{PILOT_QDISC_HANDLE}:")) {
+            if handle.starts_with(&format!("{PILOT_QDISC_HANDLE}:")) {
+                // A leftover of our own qdisc: caller must clean before adding.
+                return Ok(true);
+            } else {
                 return Err(AdapterError::ExistingRootQdisc {
                     interface: self.interface.clone(),
                     kind,
@@ -248,17 +260,7 @@ where
                 });
             }
         }
-        Ok(())
-    }
-
-    fn cleanup_command_for_leftover(&self) -> Result<Option<TcCommand>> {
-        let output = self.executor.run_capture(&self.show_command())?;
-        if let Some((_, handle)) = parse_root_qdisc(&output) {
-            if handle.starts_with(&format!("{PILOT_QDISC_HANDLE}:")) {
-                return Ok(Some(self.rollback_command()));
-            }
-        }
-        Ok(None)
+        Ok(false)
     }
 
     fn rollback_cleanup(&self) -> Result<()> {

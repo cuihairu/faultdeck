@@ -169,3 +169,41 @@ fn rollback_refuses_foreign_root_qdisc() {
         AdapterError::ExistingRootQdisc { .. }
     ));
 }
+
+#[test]
+fn inject_does_not_delete_foreign_qdisc_on_toctou_failure() {
+    struct ToctouForeign;
+    impl faultdeck_netem::CommandExecutor for ToctouForeign {
+        fn run(&self, command: &faultdeck_netem::TcCommand) -> faultdeck_netem::Result<()> {
+            // The preflight shows no root qdisc, but when the first command
+            // (root qdisc add) runs a foreign qdisc has appeared -> it fails.
+            // We must not emit a subsequent "qdisc del ... root".
+            assert!(
+                !command.arguments.iter().any(|a| a == "del"),
+                "must not delete foreign qdisc"
+            );
+            if command.arguments.iter().any(|a| a == "add") {
+                return Err(AdapterError::Command {
+                    program: "tc".into(),
+                    arguments: command.arguments.join(" "),
+                    message: "file exists".into(),
+                });
+            }
+            Ok(())
+        }
+        fn run_capture(
+            &self,
+            command: &faultdeck_netem::TcCommand,
+        ) -> faultdeck_netem::Result<String> {
+            if command.arguments.iter().any(|a| a == "show") {
+                // No qdisc at preflight time.
+                Ok(String::new())
+            } else {
+                Ok(String::new())
+            }
+        }
+    }
+    let adapter = faultdeck_netem::NetemAdapter::with_executor("eth0", ToctouForeign);
+    let result = adapter.inject(&latency());
+    assert!(result.is_err());
+}
