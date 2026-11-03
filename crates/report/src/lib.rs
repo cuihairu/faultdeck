@@ -17,6 +17,24 @@ pub enum ReportError {
 
 pub type Result<T> = std::result::Result<T, ReportError>;
 
+/// Escape a string for safe inclusion in HTML text/attribute context.
+/// Prevents stored XSS via scenario names, event messages, restore/assertion
+/// details and replay commands that may contain <script> etc.
+pub fn html_escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scenario {
     pub name: String,
@@ -90,6 +108,9 @@ impl RunReport {
     }
 
     pub fn to_html(&self) -> String {
+        let title = html_escape(&self.scenario_name);
+        let hash = html_escape(&self.scenario_hash);
+        let replay = html_escape(&self.replay_command);
         let mut html = String::new();
         let _ = write!(
             html,
@@ -100,39 +121,45 @@ impl RunReport {
              <p>Scenario: <code>{}</code></p>\
              <p>Hash: <code>{}</code></p>\
              <p>Injected at: {}</p>",
-            self.scenario_name, self.scenario_name, self.scenario_name, self.scenario_hash, self.injected_at_ms
+            title, title, title, hash, self.injected_at_ms
         );
         let _ = write!(
             html,
             "<h2>Timeline</h2><table><tr><th>Timestamp</th><th>Event</th><th>Detail</th></tr>"
         );
         for event in &self.events {
+            let kind = html_escape(&event.kind);
+            let message = html_escape(&event.message);
             let _ = write!(
                 html,
                 "<tr><td>{}</td><td>{}</td><td>{}</td></tr>",
-                event.timestamp_ms, event.kind, event.message
+                event.timestamp_ms, kind, message
             );
         }
         let _ = write!(html, "</table><h2>Restore Evidence</h2><table><tr><th>Timestamp</th><th>Check</th><th>Result</th></tr>");
         for ev in &self.restore_evidence {
+            let check = html_escape(&ev.check);
+            let detail = html_escape(&ev.detail);
             let _ = write!(
                 html,
-                "<tr><td>{}</td><td>{}</td><td>{}</td></tr>",
-                ev.timestamp_ms, ev.check, ev.passed
+                "<tr><td>{}</td><td>{}</td><td>{} ({})</td></tr>",
+                ev.timestamp_ms, check, ev.passed, detail
             );
         }
         let _ = write!(html, "</table><h2>External Assertions</h2><table><tr><th>Name</th><th>Passed</th><th>Detail</th></tr>");
         for a in &self.external_assertions {
+            let name = html_escape(&a.name);
+            let detail = html_escape(&a.detail);
             let _ = write!(
                 html,
                 "<tr><td>{}</td><td>{}</td><td>{}</td></tr>",
-                a.name, a.passed, a.detail
+                name, a.passed, detail
             );
         }
         let _ = write!(
             html,
             "</table><h2>Replay</h2><pre>{}</pre></body></html>",
-            self.replay_command
+            replay
         );
         html
     }

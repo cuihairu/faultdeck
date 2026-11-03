@@ -75,3 +75,36 @@ fn historical_diff() {
     let diff = compare_runs(&base, &comp);
     assert!(diff.changed_fields.contains_key("events"));
 }
+
+#[test]
+fn to_html_escapes_malicious_input() {
+    let scenario = scenario();
+    let mut report = RunReport::new(&scenario, now_ms());
+    report.scenario_name = "<script>alert(1)</script>".into();
+    report.replay_command = "echo \"&amp; <b>\"".into();
+    report.events.push(FaultEvent {
+        timestamp_ms: 1,
+        kind: "<img src=x onerror=alert(2)>".into(),
+        message: "</td><script>alert(3)</script>".into(),
+    });
+    report.restore_evidence.push(RestoreEvidence {
+        timestamp_ms: 2,
+        check: "ping '&&' ".into(),
+        passed: true,
+        detail: "<svg onload=alert(4)>".into(),
+    });
+    report.external_assertions.push(ExternalAssertion {
+        name: "\"quoted\"".into(),
+        passed: true,
+        detail: "<script>alert(5)</script>".into(),
+    });
+    let html = report.to_html();
+    assert!(!html.contains("<script>alert(1)"));
+    assert!(!html.contains("<script>alert(3)"));
+    assert!(!html.contains("<script>alert(5)"));
+    assert!(!html.contains("<svg"));
+    assert!(!html.contains("<img src=x"));
+    assert!(!html.contains("\"quoted\""));
+    assert!(html.contains("&lt;script&gt;alert(1)"));
+    assert!(html.contains("&amp;amp;"));
+}
