@@ -55,6 +55,7 @@ fn main() -> anyhow::Result<()> {
     if management.is_empty() {
         eprintln!("warning: no management networks configured; agent may fault management traffic");
     }
+    faultdeck_agent::warn_insecure_bind(&bind, token.as_deref());
 
     let config = AgentConfig {
         bind,

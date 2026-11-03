@@ -30,6 +30,19 @@ pub enum AgentError {
 
 pub type Result<T> = std::result::Result<T, AgentError>;
 
+/// Constant-time byte equality to avoid timing side channels when comparing
+/// an auth token. Length is compared first (public) then bytes XOR-accumulated.
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 /// Read a newline-delimited line with a hard byte ceiling.
 /// `read_line` would otherwise buffer an unbounded attacker-controlled
 /// payload before the size check could run.
@@ -96,8 +109,28 @@ pub enum Response {
 fn token_ok(config: &AgentConfig, request_token: Option<&str>) -> bool {
     match &config.token {
         None => true,
-        Some(expected) => request_token == Some(expected.as_str()),
+        Some(expected) => request_token
+            .map(|token| constant_time_eq(token.as_bytes(), expected.as_bytes()))
+            .unwrap_or(false),
     }
+}
+
+/// True if `bind` is a loopback-only address (127.0.0.1 / ::1).
+pub fn is_loopback_bind(bind: &str) -> bool {
+    let host = bind.rsplit_once(':').map(|(h, _)| h).unwrap_or(bind);
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    host == "127.0.0.1" || host == "::1" || host == "localhost"
+}
+
+/// Warn and return true when binding a non-loopback address without a token.
+pub fn warn_insecure_bind(bind: &str, token: Option<&str>) -> bool {
+    let insecure = !is_loopback_bind(bind) && token.is_none();
+    if insecure {
+        eprintln!(
+            "warning: binding {bind} without a token; any reachable host can control the agent"
+        );
+    }
+    insecure
 }
 
 pub fn authorize(config: &AgentConfig, token: Option<&str>) -> Result<()> {

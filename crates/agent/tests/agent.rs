@@ -229,3 +229,30 @@ fn oversized_frame_is_rejected() {
     let result: Result<faultdeck_agent::Request, _> = read_frame(&mut reader);
     assert!(result.is_err());
 }
+
+#[test]
+fn constant_time_eq_matches_only_equal_slices() {
+    use faultdeck_agent::constant_time_eq;
+    assert!(constant_time_eq(b"secret", b"secret"));
+    assert!(!constant_time_eq(b"secret", b"wrong!!"));
+    assert!(!constant_time_eq(b"short", b"longer"));
+    assert!(constant_time_eq(b"", b""));
+}
+
+#[test]
+fn loopback_bind_detection() {
+    use faultdeck_agent::is_loopback_bind;
+    assert!(is_loopback_bind("127.0.0.1:7000"));
+    assert!(is_loopback_bind("[::1]:7000"));
+    assert!(is_loopback_bind("localhost:7000"));
+    assert!(!is_loopback_bind("0.0.0.0:7000"));
+    assert!(!is_loopback_bind("192.168.1.10:7000"));
+}
+
+#[test]
+fn warn_insecure_bind_flags_remote_without_token() {
+    use faultdeck_agent::warn_insecure_bind;
+    assert!(warn_insecure_bind("0.0.0.0:7000", None));
+    assert!(!warn_insecure_bind("0.0.0.0:7000", Some("secret")));
+    assert!(!warn_insecure_bind("127.0.0.1:7000", None));
+}
