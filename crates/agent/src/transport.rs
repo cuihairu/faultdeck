@@ -3,6 +3,7 @@ use std::net::{TcpListener, TcpStream};
 use std::time::Duration;
 
 use serde::de::DeserializeOwned;
+use serde::de::Error as _;
 use serde::Serialize;
 use thiserror::Error;
 
@@ -22,6 +23,36 @@ pub enum TransportError {
 
 pub type Result<T> = std::result::Result<T, TransportError>;
 
+/// Read a newline-delimited JSON frame with a hard byte ceiling.
+pub const MAX_FRAME_BYTES: usize = 64 * 1024;
+
+fn read_line_limited<R: BufRead>(
+    reader: &mut R,
+    max_bytes: usize,
+) -> std::result::Result<String, TransportError> {
+    let mut buffer = Vec::new();
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            break;
+        }
+        let newline = available.iter().position(|&b| b == b'\n');
+        let take = newline.map(|i| i + 1).unwrap_or(available.len());
+        if buffer.len() + take > max_bytes {
+            return Err(TransportError::Decode(serde_json::Error::custom(
+                "frame exceeds maximum size",
+            )));
+        }
+        buffer.extend_from_slice(&available[..take]);
+        reader.consume(take);
+        if newline.is_some() {
+            break;
+        }
+    }
+    String::from_utf8(buffer)
+        .map_err(|_| TransportError::Decode(serde_json::Error::custom("invalid utf-8")))
+}
+
 /// One framed JSON line in each direction over a single TCP stream.
 pub fn send_frame<W: Write, T: Serialize>(writer: &mut W, value: &T) -> Result<()> {
     let bytes = serde_json::to_vec(value).map_err(TransportError::Encode)?;
@@ -32,9 +63,8 @@ pub fn send_frame<W: Write, T: Serialize>(writer: &mut W, value: &T) -> Result<(
 }
 
 pub fn read_frame<R: BufRead, T: DeserializeOwned>(reader: &mut R) -> Result<T> {
-    let mut line = String::new();
-    let n = reader.read_line(&mut line)?;
-    if n == 0 {
+    let line = read_line_limited(reader, MAX_FRAME_BYTES)?;
+    if line.is_empty() {
         return Err(TransportError::Closed);
     }
     let value = serde_json::from_str(line.trim()).map_err(TransportError::Decode)?;

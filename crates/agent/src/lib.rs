@@ -30,6 +30,35 @@ pub enum AgentError {
 
 pub type Result<T> = std::result::Result<T, AgentError>;
 
+/// Read a newline-delimited line with a hard byte ceiling.
+/// `read_line` would otherwise buffer an unbounded attacker-controlled
+/// payload before the size check could run.
+pub fn read_line_limited<R: BufRead>(reader: &mut R, max_bytes: usize) -> std::io::Result<String> {
+    let mut buffer = Vec::new();
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            break;
+        }
+        let newline = available.iter().position(|&byte| byte == b'\n');
+        let take = newline.map(|index| index + 1).unwrap_or(available.len());
+        if buffer.len() + take > max_bytes {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "line exceeds maximum size",
+            ));
+        }
+        buffer.extend_from_slice(&available[..take]);
+        reader.consume(take);
+        if newline.is_some() {
+            break;
+        }
+    }
+    String::from_utf8(buffer).map_err(|_| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "line is not valid UTF-8")
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentConfig {
     pub bind: String,
@@ -179,8 +208,7 @@ where
 {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut writer = stream;
-    let mut first_line = String::new();
-    reader.read_line(&mut first_line)?;
+    let first_line = read_line_limited(&mut reader, MAX_INJECTION_BYTES)?;
     let header = first_line.trim();
     if header.is_empty() {
         let _ = writer.write_all(b"{\"status\":\"error\",\"message\":\"missing token header\"}\n");

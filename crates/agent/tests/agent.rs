@@ -208,3 +208,24 @@ fn serve_preserves_applied_fault_across_connections() {
     stream.read_to_string(&mut response).unwrap();
     assert!(response.contains("fault rolled back"));
 }
+
+#[test]
+fn oversized_line_is_rejected_without_buffering() {
+    use faultdeck_agent::{read_line_limited, MAX_INJECTION_BYTES};
+    let mut data = vec![b'a'; MAX_INJECTION_BYTES + 1];
+    data.push(b'\n');
+    let mut reader = std::io::BufReader::new(data.as_slice());
+    let result = read_line_limited(&mut reader, MAX_INJECTION_BYTES);
+    assert!(result.is_err());
+}
+
+#[test]
+fn oversized_frame_is_rejected() {
+    use faultdeck_agent::transport::{read_frame, MAX_FRAME_BYTES};
+    let mut data = b"{\"cmd\":\"".to_vec();
+    data.extend(std::iter::repeat(b'a').take(MAX_FRAME_BYTES));
+    data.push(b'\n');
+    let mut reader = std::io::BufReader::new(data.as_slice());
+    let result: Result<faultdeck_agent::Request, _> = read_frame(&mut reader);
+    assert!(result.is_err());
+}
