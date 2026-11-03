@@ -51,7 +51,8 @@
   - 属实并已修复：rollback() 对 run_capture 的 "Cannot find"/"No such device" 等消息按 is_tc_not_found_message 容忍并跳过检查，与 del 的容忍策略一致；接口消失时回滚幂等成功。新增 rollback_is_idempotent_when_device_missing 测试。commit c42911d crates/netem/src/lib.rs、crates/netem/tests/adapter.rs。
 - [x] 审核发现：parse_root_qdisc 在循环内用 tokens.next()? 遇截断 "qdisc" 行即返回 None 提前终止整段扫描，后续外部 root qdisc 行会被漏检（crates/netem/src/lib.rs:464-477）
   - 属实并已修复：parse_root_qdisc 对截断行改为 continue 跳过，不提前终止扫描；后续有效 root qdisc 仍被检测。新增 parse_root_qdisc_skips_truncated_line 测试。commit 08fbe2b crates/netem/src/lib.rs。
-- [ ] 审核发现：validate() 将 CoreError::OverlapsManagement 映射为 AdapterError::EmptyTarget（"fault target is empty"）——错误语义误导，且 core 当前不产生该错误，属死分支（crates/netem/src/lib.rs:437）
+- [x] 审核发现：validate() 将 CoreError::OverlapsManagement 映射为 AdapterError::EmptyTarget（"fault target is empty"）——错误语义误导，且 core 当前不产生该错误，属死分支（crates/netem/src/lib.rs:437）
+  - 属实并已修复：validate() 现将 OverlapsManagement 映射为新增 AdapterError::ManagementOverlap（"target overlaps a management network..."），不再伪装成 EmptyTarget；新增 management_overlap_error_is_distinct 测试。commit ec9fddf crates/netem/src/lib.rs。
 - [ ] 审核发现：token 用非常量时间 == 比较且明文经 TCP 传输（mTLS 未实现），bind 0.0.0.0 且未配 token 时无告警（仅 management 为空有告警）——agent 可被远程无鉴权控制（crates/agent/src/lib.rs:67-70；crates/agent/src/main.rs:59-62）
 - [ ] 审核发现：wire 协议脆弱——即使未配置 token，首个空格仍被当作 token 分隔符，含空格的 payload（如 pretty-printed JSON）会被截断破坏；超限 payload 与 JSON 解码失败路径直接返回 Err 不写响应，客户端只见 EOF+解码错误无明确消息（crates/agent/src/lib.rs:188-207）
 - [ ] 审核发现：CLI 生成的 replay_command 不含 --milliseconds/--percent/--port-spec，latency/loss 场景的一键重现命令不完整、不可复现（crates/cli/src/main.rs:172-182）

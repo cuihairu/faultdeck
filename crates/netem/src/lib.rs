@@ -37,6 +37,8 @@ pub enum AdapterError {
     InvalidLossPercent { percent: f64 },
     #[error("invalid latency {milliseconds}ms; expected 0 < milliseconds <= {MAX_LATENCY_MS}")]
     InvalidLatency { milliseconds: u64 },
+    #[error("target overlaps a management network; management traffic must never be faulted")]
+    ManagementOverlap,
     #[error("IPv6 target is unsupported by the current tc adapter")]
     UnsupportedIpv6,
     #[error(
@@ -444,7 +446,7 @@ fn validate(injection: &Injection) -> Result<()> {
             Err(AdapterError::InvalidLatency { milliseconds })
         }
         Err(CoreError::UnsupportedIpv6) => Err(AdapterError::UnsupportedIpv6),
-        Err(CoreError::OverlapsManagement { .. }) => Err(AdapterError::EmptyTarget),
+        Err(CoreError::OverlapsManagement { .. }) => Err(AdapterError::ManagementOverlap),
     }
 }
 
@@ -619,5 +621,15 @@ eth1\t000A0000\t00000000\t0001\t0\t0\t1\t0000FFFF\t0\t0\t0\n";
             "fq_codel",
             "truncated line must not abort scanning"
         );
+    }
+
+    #[test]
+    fn management_overlap_error_is_distinct() {
+        // Ensure the previously misleading EmptyTarget mapping is gone: an
+        // overlap now surfaces its own, correctly-worded error.
+        let err = AdapterError::ManagementOverlap;
+        let msg = err.to_string();
+        assert!(msg.contains("management"), "message was: {msg}");
+        assert!(!msg.contains("fault target is empty"));
     }
 }
