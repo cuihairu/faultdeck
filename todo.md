@@ -59,6 +59,7 @@
   - 属实并已修复：仅当配置 token 时才把首个空格当 token 分隔符（否则整行作 payload）；超限/无效 JSON/无效 injection 路径现写入 {"status":"error","message":...} 响应而非静默 Err。新增 wire_payload_with_spaces_is_valid_without_token、handle_connection_writes_json_error_response 测试。commit d6b53d0 crates/agent/src/lib.rs、crates/agent/tests/agent.rs。
 - [x] 审核发现：CLI 生成的 replay_command 不含 --milliseconds/--percent/--port-spec，latency/loss 场景的一键重现命令不完整、不可复现（crates/cli/src/main.rs:172-182）
   - 属实并已修复：replay_command 现包含 --milliseconds/--percent/--port-spec/--scenario-name 与 --token（存在时），latency/loss 可精确复现。新增 cli_replay_command_includes_all_fault_parameters 端到端测试（真实 CLI 注入+dry-run agent）。commit 0f33a4d crates/cli/src/main.rs、crates/cli/tests/remote.rs。
-- [ ] 审核发现：测试缺口——crates/agent/src/firewall.rs 无任何单元/集成测试（真实 iptables 路径全未测，仅 dry_run 被用到），ensure_chain/apply/rollback 的生命周期缺陷未被捕获（crates/agent/src/firewall.rs）
+- [x] 审核发现：测试缺口——crates/agent/src/firewall.rs 无任何单元/集成测试（真实 iptables 路径全未测，仅 dry_run 被用到），ensure_chain/apply/rollback 的生命周期缺陷未被捕获（crates/agent/src/firewall.rs）
+  - 属实并已补齐：新增 crates/agent/tests/firewall.rs 集成测试，用 mock iptables 脚本覆盖 ensure_chain 幂等、rollback 幂等（链缺失）、apply 的 source/destination/port 匹配与完整 apply→rollback 生命周期命令序列。commit ab0446d crates/agent/tests/firewall.rs。
 - [ ] 审核发现：测试缺口——serve() 的每连接状态循环无测试（agent/cli 测试均为手动共享 HashSet 或直接调用 handle_connection），per-connection applied 缺陷未暴露；coordinator serve()/handle_stream 亦无 TCP 集成测试（crates/agent/tests/agent.rs:75-160；crates/cli/tests/remote.rs:31-41；crates/coordinator/tests/coordinator.rs）
 - [ ] 审核发现：测试缺口——RunReport::to_html 无转义/恶意输入测试，CLI send() 无端到端测试、无超时（read_to_string 可永久阻塞）与无 token 默认配置下的行为测试（crates/report/tests/report.rs；crates/cli/src/main.rs:95-115）

@@ -118,3 +118,48 @@ exit 0
     let commands = std::fs::read_to_string(dir.path().join("state/commands")).unwrap();
     assert!(commands.contains(" -d 192.0.2.0/24 -j DROP"));
 }
+
+#[test]
+fn full_apply_rollback_lifecycle_is_recorded() {
+    use faultdeck_core::{DisconnectSpec, FaultSpec, Injection, Target};
+    use ipnet::IpNet;
+    use std::str::FromStr;
+
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("iptables");
+    let mut f = std::fs::File::create(&script).unwrap();
+    write!(
+        f,
+        r#"#!/bin/sh
+BASE="$(dirname "$0")/state"
+mkdir -p "$BASE"
+printf '%s\n' "$*" >> "$BASE/commands"
+exit 0
+"#
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    drop(f);
+
+    let fw = Iptables {
+        dry_run: false,
+        path: Some(script),
+    };
+    let injection = Injection {
+        fault: FaultSpec::Disconnect(DisconnectSpec { all_traffic: true }),
+        target: Target::destination(IpNet::from_str("192.0.2.0/24").unwrap()),
+    };
+    fw.apply(&injection).unwrap();
+    fw.rollback().unwrap();
+
+    let commands = std::fs::read_to_string(dir.path().join("state/commands")).unwrap();
+    // apply: -N (create chain), -I (install jump), -A (append DROP rule).
+    assert!(commands.contains("-N FAULTDECK"));
+    assert!(commands.contains("-N FAULTDECK -t mangle"));
+    assert!(commands.contains("-I INPUT -j FAULTDECK -t mangle"));
+    assert!(commands.contains("-A FAULTDECK -t mangle -d 192.0.2.0/24 -j DROP"));
+    // rollback: -D (remove jump), -F (flush), -X (delete chain).
+    assert!(commands.contains("-D INPUT -j FAULTDECK -t mangle"));
+    assert!(commands.contains("-F FAULTDECK -t mangle"));
+    assert!(commands.contains("-X FAULTDECK -t mangle"));
+}
