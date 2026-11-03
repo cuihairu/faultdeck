@@ -58,7 +58,7 @@ The coordinator sits where both sides can reach; agents register with heartbeats
 | Phase | Scope | Status |
 |---|---|---|
 | P0 | Rust CLI + Toxiproxy adapter + experiment YAML + latency/disconnect/blackhole/bandwidth + auto recovery + JSON report (test-driven: game disconnect-reconnect scenario ships first) | Not started |
-| P1 | tc/netem adapter, TCP/UDP, traffic selection, burst loss, reordering, netns isolation | Planned |
+| P1 | tc/netem adapter, TCP/UDP, traffic selection, burst loss, reordering, netns isolation | Partially shipped — tc/netem adapter + traffic selection (src/dst/port) live in `crates/netem`; burst loss, reordering, netns isolation pending |
 | P2 | Game weak-network / combat-disconnect / cross-server-partition templates, Wingman API integration, external assertions & reports | Planned |
 | P3 | WinDivert, optional Web UI, multi-target, remote agent, CI integration | Planned |
 

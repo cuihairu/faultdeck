@@ -59,7 +59,7 @@ agent 主动出站反向拨号,长连隧道(断线自动重连),指令与报告�
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | P0 | Rust CLI + Toxiproxy Adapter + 实验 YAML + 延迟/断线/黑洞/带宽 + 自动恢复 + JSON 报告(测试导向:游戏断线重连场景首发) | 未开始 |
-| P1 | tc/netem Adapter、TCP/UDP、流量选择、突发丢包、乱序、netns 隔离 | 待 P0 |
+| P1 | tc/netem Adapter、TCP/UDP、流量选择、突发丢包、乱序、netns 隔离 | 部分落地——tc/netem Adapter 与流量选择(源/目的/端口)已实现(`crates/netem`);突发丢包、乱序、netns 隔离待做 |
 | P2 | 游戏弱网/战斗断线/跨服隔离模板,集成 Wingman API、外部断言与报告 | 待 P1 |
 | P3 | WinDivert、可选 Web UI、多目标、远程 Agent、CI 集成 | 待 P2 |
 
