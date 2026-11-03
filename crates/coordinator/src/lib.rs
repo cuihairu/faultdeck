@@ -197,7 +197,15 @@ pub fn serve_with_token(
     token: Option<String>,
 ) -> Result<()> {
     let listener = TcpListener::bind(bind)?;
-    eprintln!("coordinator listening on {bind}");
+    serve_on_with_token(state, listener, token)
+}
+
+pub fn serve_on_with_token(
+    state: Arc<Mutex<CoordinatorState>>,
+    listener: TcpListener,
+    token: Option<String>,
+) -> Result<()> {
+    eprintln!("coordinator listening on {}", listener.local_addr()?);
     for stream in listener.incoming().flatten() {
         let state = state.clone();
         let token = token.clone();

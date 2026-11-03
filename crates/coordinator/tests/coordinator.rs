@@ -247,3 +247,41 @@ fn handle_connection_accepts_authorized_wire_message() {
     assert!(matches!(response, AgentResponse::Agents { .. }));
     thread.join().unwrap();
 }
+
+#[test]
+fn serve_accepts_tcp_register_and_list() {
+    use faultdeck_agent::transport::{read_frame, send_frame};
+    use faultdeck_coordinator::{serve_on_with_token, WireMessage};
+    use std::io::{BufReader, BufWriter};
+    use std::net::{Shutdown, TcpListener, TcpStream};
+
+    let state = Arc::new(Mutex::new(CoordinatorState::default()));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        let _ = serve_on_with_token(state, listener, Some("secret".into()));
+    });
+
+    let mut stream = TcpStream::connect(addr).unwrap();
+    let mut writer = BufWriter::new(stream.try_clone().unwrap());
+    send_frame(
+        &mut writer,
+        &WireMessage {
+            token: Some("secret".into()),
+            command: AgentCommand::Register(faultdeck_coordinator::RegisterRequest {
+                identity: AgentIdentity {
+                    id: "agent-1".into(),
+                    capabilities: vec!["netem".into()],
+                    last_seen_ms: 0,
+                },
+            }),
+        },
+    )
+    .unwrap();
+    drop(writer);
+    stream.shutdown(Shutdown::Write).unwrap();
+
+    let mut reader = BufReader::new(stream.try_clone().unwrap());
+    let response: AgentResponse = read_frame(&mut reader).unwrap();
+    assert!(matches!(response, AgentResponse::Registered { id } if id == "agent-1"));
+}
