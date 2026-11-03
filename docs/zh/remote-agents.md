@@ -35,7 +35,7 @@ sudo faultdeck-agent \
 
 响应为单行 JSON:`{"status":"ok"|"error","message":"…"}`。
 
-生命周期说明:已应用故障的状态是**每连接独立**的(每条流新建一个 `HashSet`),守护进程重启后不保留故障记录。agent 被杀后请手动 `rollback` 或重新注入 —— 适配器在下次应用时会清理自己遗留的根 qdisc。
+生命周期说明:已应用故障的状态是**跨连接共享**的(`serve_on` 背后是一个 `Arc<Mutex<HashSet>>`,因此某条连接的 `rollback` 会清除另一条连接注入的故障),但守护进程重启后不保留故障记录。agent 被杀后请手动 `rollback` 或重新注入 —— 适配器在下次应用时会清理自己遗留的根 qdisc。
 
 ## Coordinator 注册
 

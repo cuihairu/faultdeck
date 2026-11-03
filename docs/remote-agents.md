@@ -35,7 +35,7 @@ Each connection: read one line → the optional `<token> ` prefix is checked aga
 
 Responses are `{"status":"ok"|"error","message":"…"}` on a single JSON line.
 
-Note on lifecycle: the applied-fault state is per-connection (a fresh `HashSet` per stream) and the daemon does not track faults across restarts. If the agent is killed, run `rollback` manually or re-inject — the adapter cleans its own leftover root qdisc on the next apply.
+Note on lifecycle: the applied-fault state is shared across connections (an `Arc<Mutex<HashSet>>` behind `serve_on`, so a rollback on one connection clears what another connection injected), but the daemon does not track faults across restarts. If the agent is killed, run `rollback` manually or re-inject — the adapter cleans its own leftover root qdisc on the next apply.
 
 ## Coordinator registration
 
