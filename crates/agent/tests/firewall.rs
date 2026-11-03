@@ -54,6 +54,30 @@ fn ensure_chain_installs_chain_and_jump() {
 }
 
 #[test]
+fn ensure_chain_dry_run_emits_jump_install() {
+    // Dry-run cannot execute -C, so it must treat the jump as absent and
+    // still emit the same -I command as a real first deployment.
+    let (mut fw, calls) = recorder();
+    fw.dry_run = true;
+    fw.ensure_chain().unwrap();
+    let calls = calls.lock().unwrap().clone();
+    assert!(calls.iter().any(|c| c.starts_with("-N FAULTDECK")));
+    assert!(calls.iter().any(|c| c.starts_with("-I INPUT -j FAULTDECK")));
+}
+
+#[test]
+fn ensure_chain_pure_dry_run_succeeds() {
+    // No runner and no binary path: dry-run must short-circuit every command
+    // (including the -C probe that decides whether to emit -I) and succeed.
+    let fw = Iptables {
+        dry_run: true,
+        path: None,
+        runner: None,
+    };
+    fw.ensure_chain().unwrap();
+}
+
+#[test]
 fn ensure_chain_tolerates_chain_exists() {
     // First -N fails with "Chain already exists"; ensure_chain must tolerate it.
     let runner = Arc::new(|args: &[&str]| -> Result<(), FirewallError> {

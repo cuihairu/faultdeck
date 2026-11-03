@@ -47,10 +47,10 @@ impl Iptables {
         if let Some(runner) = &self.runner {
             return runner(args);
         }
-        let bin = self.binary()?;
         if self.dry_run {
             return Ok(());
         }
+        let bin = self.binary()?;
         let output = Command::new(bin)
             .args(args)
             .output()
@@ -89,18 +89,24 @@ impl Iptables {
         // would accumulate another copy on every apply. -C checks first; only
         // a missing jump triggers the insert.
         let jump = ["-C", "INPUT", "-j", CHAIN, "-t", "mangle"];
-        let already_present = match self.run(&jump) {
-            Ok(()) => true,
-            Err(FirewallError::Command(message)) => {
-                // "Bad rule" means no matching rule exists -> not installed.
-                // Any other failure (e.g. iptables missing) propagates below.
-                if message.contains("Bad rule") {
-                    false
-                } else {
-                    return Err(FirewallError::Command(message));
+        // In dry-run we cannot query iptables, so treat the jump as absent:
+        // this keeps the emitted -I command in step with a real first deploy.
+        let already_present = if self.dry_run {
+            false
+        } else {
+            match self.run(&jump) {
+                Ok(()) => true,
+                Err(FirewallError::Command(message)) => {
+                    // "Bad rule" means no matching rule exists -> not installed.
+                    // Any other failure (e.g. iptables missing) propagates below.
+                    if message.contains("Bad rule") {
+                        false
+                    } else {
+                        return Err(FirewallError::Command(message));
+                    }
                 }
+                Err(e) => return Err(e),
             }
-            Err(e) => return Err(e),
         };
         if !already_present {
             self.run_ignoring(&["-I", "INPUT", "-j", CHAIN, "-t", "mangle"], &["Bad rule"])?;
