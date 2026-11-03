@@ -204,12 +204,22 @@ where
     pub fn inject(&self, injection: &Injection) -> Result<Vec<TcCommand>> {
         validate(injection)?;
         let leftover = self.preflight()?;
-        let mut commands = self.apply_commands(injection);
-        if leftover {
-            commands.insert(0, self.rollback_command());
-        }
+        let commands = self.apply_commands(injection);
+        // own_qdisc_created must only become true once our own 100: root
+        // qdisc has actually been created. When a leftover exists, the first
+        // command is a cleanup `del`; marking it as "own qdisc created" would
+        // let a subsequent failed `add` (foreign qdisc appearing in the
+        // TOCTOU window) delete that foreign qdisc via rollback_cleanup().
         let mut own_qdisc_created = false;
-        for command in &commands {
+        let mut index = 0;
+        if leftover {
+            // commands[0] is the cleanup del (see apply_commands + leftover).
+            if let Err(error) = self.executor.run(&commands[0]) {
+                return Err(error);
+            }
+            index = 1;
+        }
+        for command in &commands[index..] {
             if let Err(error) = self.executor.run(command) {
                 // Only clean up a root qdisc we actually created. If the very
                 // first (root_qdisc) command failed because a foreign qdisc
@@ -219,11 +229,8 @@ where
                 }
                 return Err(error);
             }
-            if !own_qdisc_created {
-                // The first command is either a leftover cleanup or the root
-                // qdisc; once it succeeds our own 100: qdisc is in place.
-                own_qdisc_created = true;
-            }
+            // The first executed command after cleanup is the root qdisc add.
+            own_qdisc_created = true;
         }
         Ok(commands)
     }

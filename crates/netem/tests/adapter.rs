@@ -209,6 +209,43 @@ fn inject_does_not_delete_foreign_qdisc_on_toctou_failure() {
 }
 
 #[test]
+fn inject_leftover_does_not_delete_foreign_qdisc_on_toctou_failure() {
+    struct ToctouForeignAfterCleanup;
+    impl faultdeck_netem::CommandExecutor for ToctouForeignAfterCleanup {
+        fn run(&self, command: &faultdeck_netem::TcCommand) -> faultdeck_netem::Result<()> {
+            // A leftover 100: qdisc exists, so inject first issues a cleanup
+            // `del`. That cleanup is legitimate. The subsequent root `add`
+            // fails because a foreign qdisc appeared in the window; the
+            // buggy code would then emit a SECOND `del` (rollback_cleanup)
+            // and delete that foreign qdisc. Assert we never issue a second
+            // delete after the cleanup.
+            if command.arguments.iter().any(|a| a == "add") {
+                return Err(faultdeck_netem::AdapterError::Command {
+                    program: "tc".into(),
+                    arguments: command.arguments.join(" "),
+                    message: "file exists".into(),
+                });
+            }
+            Ok(())
+        }
+        fn run_capture(
+            &self,
+            command: &faultdeck_netem::TcCommand,
+        ) -> faultdeck_netem::Result<String> {
+            if command.arguments.iter().any(|a| a == "show") {
+                // Preflight reports a leftover of our own 100: qdisc.
+                Ok("qdisc prio 100: root refcnt 2\n".to_string())
+            } else {
+                Ok(String::new())
+            }
+        }
+    }
+    let adapter = faultdeck_netem::NetemAdapter::with_executor("eth0", ToctouForeignAfterCleanup);
+    let result = adapter.inject(&latency());
+    assert!(result.is_err());
+}
+
+#[test]
 fn rollback_is_idempotent_when_device_missing() {
     struct MissingDevice;
     impl faultdeck_netem::CommandExecutor for MissingDevice {
