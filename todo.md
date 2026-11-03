@@ -4,7 +4,8 @@
   - 本地实现完成：crates/agent/src/transport.rs 提供 ModeA(listener accept)与 ModeB(反向拨号+retries/backoff 重连)，send_frame/read_frame 统一 JSON 行帧承载请求/响应，协议对称。3 项传输测试覆盖 Mode A 帧往返、Mode B 拨号、断线重连。跨机长连隧道实测 BLOCKED（需真实 NAT 网络）。
 - [x] FD-REPORT-1 [P1] 报告体系(关键功能):报告=实验唯一事实源——场景 YAML+hash、注入参数与故障状态时间线、恢复验证证据、外部断言结果、一键重现命令;双格式 JSON(CI 回归对比)+HTML(人看时间线图);历史对比=同场景多次运行 diff(回归验证核心);双向模式下报告均可经隧道回传。P0 的 JSON 报告为基础,增强部分排 P2 初。
   - 本地实现完成：crates/report 提供 Scenario(JSON 规范+SHA256 hash)、RunReport(时间线/恢复证据/外部断言/重现命令)、to_json/to_html、compare_runs(历史 diff)。CLI remote inject 增 --report-json/--report-html 输出。3 项报告测试覆盖 JSON/HTML/hash 稳定/historical diff。隧道回传复用 FD-ARCH-1 transport 帧协议。
-- [ ] FD-ARCH-2 [P1] Coordinator 协调者模式(多目标推荐形态):协调者部署在 agent 与控制端都可达处;agent 注册(身份/能力/在线状态,心跳保活),控制端附着发起实验,协调者路由指令与报告回传并存档;解决双向 NAT(两端仅出站连接)、多目标舰队视图、报告集中存档;P3 Web UI 天然部署于协调者。与 Mode A/B 递进:单目标直连用 A/B,多目标/团队用协调者;舰队场景协调者可运行于 meshlet 虚拟网之上(自家产品闭环)。安全:双向 token,mTLS 可选,agent 只信协调者指纹。
+- [x] FD-ARCH-2 [P1] Coordinator 协调者模式(多目标推荐形态):协调者部署在 agent 与控制端都可达处;agent 注册(身份/能力/在线状态,心跳保活),控制端附着发起实验,协调者路由指令与报告回传并存档;解决双向 NAT(两端仅出站连接)、多目标舰队视图、报告集中存档;P3 Web UI 天然部署于协调者。与 Mode A/B 递进:单目标直连用 A/B,多目标/团队用协调者;舰队场景协调者可运行于 meshlet 虚拟网之上(自家产品闭环)。安全:双向 token,mTLS 可选,agent 只信协调者指纹。
+  - 本地实现完成：crates/coordinator 提供 CoordinatorState(agent 注册/心跳/在线状态/能力/集中报告存档)、AgentCommand(register/heartbeat/inject/rollback/fetch_report/list_agents)、AgentResponse、serve() 长连接帧路由，二进制 faultdeck-coordinator。真实 TCP 端到端验证 register/heartbeat/inject/list 通过，报告可经 FetchReport 读取。跨机 NAT/meshlet/mTLS 实测 BLOCKED（需真实网络环境）。
 
 <!-- 审核记录 2026-11-03 a47ead12..HEAD (commit 8d21b19) crates/netem + CI + workspace 配置 -->
 - [x] 审核发现：混合地址族 Target（source=IPv4 + destination=IPv6）会在 validate() 通过后于 pilot_filter() 返回 UnsupportedIpv6，触发 apply_commands() 的 `.expect("validated injection")` panic——因 validate() 仅用 source.or(destination) 检查单一地址族；Injection 派生 Deserialize，不可信输入可触发该 panic（DoS）。已用临时测试复现（crates/netem/src/lib.rs:365-369,220,259-293）

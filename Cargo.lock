@@ -178,6 +178,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "faultdeck-coordinator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "faultdeck-agent",
+ "faultdeck-core",
+ "faultdeck-report",
+ "ipnet",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "faultdeck-core"
 version = "0.1.0"
 dependencies = [

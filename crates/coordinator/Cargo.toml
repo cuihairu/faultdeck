@@ -1,0 +1,15 @@
+[package]
+name = "faultdeck-coordinator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+faultdeck-agent = { path = "../agent" }
+faultdeck-core = { path = "../core" }
+faultdeck-report = { path = "../report" }
+ipnet = { workspace = true, features = ["serde"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
