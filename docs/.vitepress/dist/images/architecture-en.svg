@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1360" viewBox="0 0 1280 1360" role="img" aria-labelledby="title desc" xml:lang="en-US">
+<title id="title">FaultDeck · System Architecture</title>
+<desc id="desc">FaultDeck architecture: the faultdeck CLI sends newline-framed JSON commands to the faultdeck-coordinator hub (default 127.0.0.1:7001), which keeps the agent registry and routes and archives run reports; faultdeck-agent on each target host authenticates by token, validates faults against faultdeck-core, drives the faultdeck-netem tc adapter (root qdisc 100: for latency and loss) and applies iptables mangle DROP for disconnect faults; faultdeck-report renders JSON/HTML RunReports with SHA-256 scenario hashes and compare_runs history diffs.</desc>
+<defs><marker id="arrow-2563eb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10Z" fill="#2563eb"/></marker><marker id="arrow-087f5b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10Z" fill="#087f5b"/></marker><marker id="arrow-475569" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10Z" fill="#475569"/></marker><marker id="arrow-7c3aed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10Z" fill="#7c3aed"/></marker><marker id="arrow-c2410c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10Z" fill="#c2410c"/></marker></defs>
+<style>text{font-family:Arial,'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#172b4d}.title{font-size:30px;font-weight:700}.name{font-size:19px;font-weight:700}.body{font-size:14px;fill:#435570}.label{font-size:14px;fill:#435570}.edge{fill:none;stroke-linejoin:round}.control{stroke-dasharray:7 5}</style>
+<rect width="1280" height="1360" rx="20" fill="#f8fafc"/>
+<text x="40" y="48" class="title" text-anchor="start">FaultDeck · System Architecture</text>
+<text x="40" y="80" class="body" font-size="17" text-anchor="start">tc netem + iptables fault injection · multi-target coordinator · reproducible reports</text>
+<path d="M240 210 V300" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M240 210 V300" class="edge " style="stroke:#2563eb;stroke-width:2" marker-end="url(#arrow-2563eb)"/>
+<path d="M240 470 V540" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M240 470 V540" class="edge " style="stroke:#2563eb;stroke-width:2" marker-end="url(#arrow-2563eb)"/>
+<path d="M240 700 V780" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M240 700 V780" class="edge " style="stroke:#087f5b;stroke-width:2" marker-end="url(#arrow-087f5b)"/>
+<path d="M240 950 V1020" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M240 950 V1020" class="edge " style="stroke:#087f5b;stroke-width:2" marker-end="url(#arrow-087f5b)"/>
+<path d="M560 640 H640 V1020" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M560 640 H640 V1020" class="edge control" style="stroke:#c2410c;stroke-width:2" marker-end="url(#arrow-c2410c)"/>
+<path d="M560 580 H880" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M560 580 H880" class="edge " style="stroke:#475569;stroke-width:2" marker-end="url(#arrow-475569)"/>
+<path d="M660 380 H880" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M660 380 H880" class="edge " style="stroke:#7c3aed;stroke-width:2" marker-end="url(#arrow-7c3aed)"/>
+<path d="M420 175 H880" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M420 175 H880" class="edge control" style="stroke:#7c3aed;stroke-width:2" marker-end="url(#arrow-7c3aed)"/>
+<rect x="60" y="110" width="360" height="100" rx="14" fill="#fff7ed" stroke="#fdba74" stroke-width="1.5"/>
+<text x="76" y="146" class="name" font-size="19" text-anchor="start">FaultDeck CLI — faultdeck-cli</text>
+<text x="76" y="172" class="body" font-size="14" text-anchor="start">remote ping · inject · rollback</text>
+<text x="76" y="198" class="body" font-size="14" text-anchor="start">one TCP connection per invocation</text>
+<rect x="60" y="300" width="600" height="170" rx="14" fill="#eef2f7" stroke="#64748b" stroke-width="1.5"/>
+<text x="76" y="336" class="name" font-size="19" text-anchor="start">faultdeck-coordinator — multi-target hub</text>
+<text x="76" y="362" class="body" font-size="14" text-anchor="start">default listen 127.0.0.1:7001</text>
+<text x="76" y="388" class="body" font-size="14" text-anchor="start">AgentCommand: register · heartbeat · inject · rollback</text>
+<text x="76" y="414" class="body" font-size="14" text-anchor="start">fetch_report · list_agents · agent registry + routes</text>
+<text x="76" y="440" class="body" font-size="14" text-anchor="start">report archive — inject/rollback queued (dispatch pending)</text>
+<rect x="60" y="540" width="500" height="160" rx="14" fill="#eef2f7" stroke="#64748b" stroke-width="1.5"/>
+<text x="76" y="576" class="name" font-size="19" text-anchor="start">faultdeck-agent · per target host</text>
+<text x="76" y="602" class="body" font-size="14" text-anchor="start">token auth · single-active-fault state</text>
+<text x="76" y="628" class="body" font-size="14" text-anchor="start">mgmt-network overlap guard</text>
+<text x="76" y="654" class="body" font-size="14" text-anchor="start">validate_injection (faultdeck-core)</text>
+<text x="76" y="680" class="body" font-size="14" text-anchor="start">drives tc netem + iptables firewall</text>
+<rect x="60" y="780" width="500" height="170" rx="14" fill="#eef2f7" stroke="#64748b" stroke-width="1.5"/>
+<text x="76" y="816" class="name" font-size="19" text-anchor="start">faultdeck-netem — tc adapter</text>
+<text x="76" y="842" class="body" font-size="14" text-anchor="start">plan() → preflight tc qdisc show</text>
+<text x="76" y="868" class="body" font-size="14" text-anchor="start">apply tc qdisc 100: + filter (latency / loss)</text>
+<text x="76" y="894" class="body" font-size="14" text-anchor="start">rollback on failure · cleans stale qdiscs</text>
+<text x="76" y="920" class="body" font-size="14" text-anchor="start">disconnects bypass tc → iptables mangle DROP</text>
+<rect x="880" y="480" width="340" height="170" rx="14" fill="#ffffff" stroke="#475569" stroke-width="1.5"/>
+<text x="896" y="516" class="name" font-size="19" text-anchor="start">faultdeck-core — shared model</text>
+<text x="896" y="542" class="body" font-size="14" text-anchor="start">FaultSpec: latency · loss · disconnect</text>
+<text x="896" y="568" class="body" font-size="14" text-anchor="start">Target · Injection</text>
+<text x="896" y="594" class="body" font-size="14" text-anchor="start">validate_injection</text>
+<text x="896" y="620" class="body" font-size="14" text-anchor="start">management-network overlap check</text>
+<rect x="880" y="110" width="340" height="230" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="896" y="146" class="name" font-size="19" text-anchor="start">faultdeck-report</text>
+<text x="896" y="172" class="body" font-size="14" text-anchor="start">Scenario · RunReport (JSON / HTML)</text>
+<text x="896" y="198" class="body" font-size="14" text-anchor="start">SHA-256 scenario hash</text>
+<text x="896" y="224" class="body" font-size="14" text-anchor="start">compare_runs → HistoricalDiff</text>
+<text x="896" y="250" class="body" font-size="14" text-anchor="start">per-run timeline + recovery verification</text>
+<rect x="60" y="1020" width="700" height="200" rx="14" fill="#ffffff" stroke="#087f5b" stroke-width="1.5"/>
+<text x="76" y="1054" class="name" font-size="17" text-anchor="start">Target host (game server)</text>
+<rect x="80" y="1075" width="300" height="120" rx="14" fill="#f0fdf4" stroke="#087f5b" stroke-width="1.5"/>
+<text x="96" y="1109" class="name" font-size="17" text-anchor="start">eth0 — netem qdisc 100:</text>
+<text x="96" y="1135" class="body" font-size="13" text-anchor="start">latency · packet loss</text>
+<text x="96" y="1159" class="body" font-size="13" text-anchor="start">planned by netem adapter</text>
+<rect x="420" y="1075" width="320" height="120" rx="14" fill="#fff7ed" stroke="#c2410c" stroke-width="1.5"/>
+<text x="436" y="1109" class="name" font-size="17" text-anchor="start">firewall — iptables -t mangle</text>
+<text x="436" y="1135" class="body" font-size="13" text-anchor="start">DROP rule = disconnect fault</text>
+<text x="436" y="1159" class="body" font-size="13" text-anchor="start">applied by agent, rolled back</text>
+<text x="252" y="258" class="label" font-size="14" text-anchor="start">framed JSON line</text>
+<text x="252" y="512" class="label" font-size="14" text-anchor="start">TCP :7001 · newline-framed JSON</text>
+<text x="252" y="748" class="label" font-size="14" text-anchor="start">FaultSpec → plan()</text>
+<text x="252" y="992" class="label" font-size="14" text-anchor="start">tc qdisc 100: · latency / loss</text>
+<text x="652" y="860" class="label" font-size="14" text-anchor="start">iptables -t mangle DROP (disconnect)</text>
+<text x="600" y="574" class="label" font-size="14" text-anchor="start">validate_injection</text>
+<text x="700" y="372" class="label" font-size="14" text-anchor="start">archive RunReport</text>
+<text x="460" y="167" class="label" font-size="14" text-anchor="start">compare_runs (baseline vs run)</text>
+<path d="M60 1310 H130" fill="none" class="edge " style="stroke:#2563eb;stroke-width:2"/>
+<text x="140" y="1315" class="label" font-size="14" text-anchor="start">control / command flow</text>
+<path d="M380.4 1310 H450.4" fill="none" class="edge " style="stroke:#087f5b;stroke-width:2"/>
+<text x="460.4" y="1315" class="label" font-size="14" text-anchor="start">tc netem injection</text>
+<path d="M668.0 1310 H738.0" fill="none" class="edge control" style="stroke:#c2410c;stroke-width:2"/>
+<text x="748.0" y="1315" class="label" font-size="14" text-anchor="start">iptables disconnect</text>
+<path d="M963.8 1310 H1033.8" fill="none" class="edge control" style="stroke:#7c3aed;stroke-width:2"/>
+<text x="1043.8" y="1315" class="label" font-size="14" text-anchor="start">report / compare_runs</text>
+</svg>

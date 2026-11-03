@@ -1,1 +1,0 @@
-var e=`/faultdeck/logo.svg`;export{e as t};

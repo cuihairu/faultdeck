@@ -7,6 +7,8 @@
 
 [English](README.md) · 中文
 
+<p align="center"><img src="docs/public/images/architecture-zh.svg" width="760" alt="FaultDeck 架构图" /></p>
+
 
 **定位:为游戏开发测试服务。** 模拟玩家弱网、断线重连、战斗中掉线、跨服网络隔离等游戏开发中真实会遇到的网络故障,自动注入、自动验证服务端能否正确恢复,生成可复现的测试报告——目的是让故障测试可重复、可自动化,替代人肉拔网线。
 

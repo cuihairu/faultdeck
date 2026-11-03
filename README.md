@@ -7,6 +7,8 @@
 
 English · [中文文档](README.zh.md)
 
+<p align="center"><img src="docs/public/images/architecture-en.svg" width="760" alt="FaultDeck architecture" /></p>
+
 **FaultDeck serves game development testing.** It simulates real-world game network faults — player weak networks, disconnect/reconnect, mid-combat drops, cross-server partition — injects them automatically, verifies that the server recovers correctly, and produces reproducible test reports. The goal: repeatable, automated fault testing instead of manually pulling network cables.
 
 Fault types: latency, packet loss, disconnect, blackhole, bandwidth throttle. Scenarios are prebuilt around common game development problems (disconnect-on-room-join and reconnect, combat settlement packet-loss retry, dual-server brain split, Redis/DB timeouts blocking game logic). Not bound to KBEngine or any single game server — but game scenario templates are first-class citizens.
