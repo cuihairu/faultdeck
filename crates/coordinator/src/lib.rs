@@ -4,7 +4,7 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 
 use faultdeck_agent::transport::{read_frame, send_frame};
-use faultdeck_core::Injection;
+use faultdeck_core::{validate_injection, Injection};
 use faultdeck_report::{RunReport, Scenario};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -21,6 +21,10 @@ pub enum CoordinatorError {
     UnknownTarget(String),
     #[error("agent not registered {0}")]
     NotRegistered(String),
+    #[error("unauthorized: missing or invalid token")]
+    Unauthorized,
+    #[error("invalid injection: {0}")]
+    InvalidInjection(String),
 }
 
 pub type Result<T> = std::result::Result<T, CoordinatorError>;
@@ -88,16 +92,41 @@ impl CoordinatorState {
 
 pub struct Coordinator {
     pub state: Arc<Mutex<CoordinatorState>>,
+    pub token: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WireMessage {
+    pub token: Option<String>,
+    pub command: AgentCommand,
 }
 
 impl Coordinator {
     pub fn new() -> Self {
+        Self::with_token(None)
+    }
+
+    pub fn with_token(token: Option<String>) -> Self {
         Self {
             state: Arc::new(Mutex::new(CoordinatorState::default())),
+            token,
         }
     }
 
-    pub fn handle_control_command(&self, command: &AgentCommand) -> Result<AgentResponse> {
+    pub fn authorize(&self, token: Option<&str>) -> Result<()> {
+        match &self.token {
+            None => Ok(()),
+            Some(expected) if token == Some(expected.as_str()) => Ok(()),
+            _ => Err(CoordinatorError::Unauthorized),
+        }
+    }
+
+    pub fn handle_control_command(
+        &self,
+        command: &AgentCommand,
+        request_token: Option<&str>,
+    ) -> Result<AgentResponse> {
+        self.authorize(request_token)?;
         let mut state = self.state.lock().unwrap();
         match command {
             AgentCommand::Register(reg) => {
@@ -119,6 +148,11 @@ impl Coordinator {
                 agents: state.list(),
             }),
             AgentCommand::Inject { id, injection } => {
+                if !state.agents.contains_key(id) {
+                    return Err(CoordinatorError::NotRegistered(id.clone()));
+                }
+                validate_injection(injection)
+                    .map_err(|e| CoordinatorError::InvalidInjection(e.to_string()))?;
                 let scenario = Scenario {
                     name: format!("{id}-injection"),
                     injection: injection.clone(),
@@ -154,26 +188,49 @@ impl Default for Coordinator {
 }
 
 pub fn serve(state: Arc<Mutex<CoordinatorState>>, bind: &str) -> Result<()> {
+    serve_with_token(state, bind, None)
+}
+
+pub fn serve_with_token(
+    state: Arc<Mutex<CoordinatorState>>,
+    bind: &str,
+    token: Option<String>,
+) -> Result<()> {
     let listener = TcpListener::bind(bind)?;
     eprintln!("coordinator listening on {bind}");
     for stream in listener.incoming().flatten() {
         let state = state.clone();
+        let token = token.clone();
         std::thread::spawn(move || {
-            let _ = handle_stream(state, stream);
+            let _ = handle_stream_with_token(state, stream, token);
         });
     }
     Ok(())
 }
 
-fn handle_stream(state: Arc<Mutex<CoordinatorState>>, stream: TcpStream) -> Result<()> {
+/// Public entry point for tests and one-shot TCP handlers.
+pub fn handle_connection(
+    state: Arc<Mutex<CoordinatorState>>,
+    stream: TcpStream,
+    token: Option<String>,
+) -> Result<()> {
+    handle_stream_with_token(state, stream, token)
+}
+
+fn handle_stream_with_token(
+    state: Arc<Mutex<CoordinatorState>>,
+    stream: TcpStream,
+    token: Option<String>,
+) -> Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut writer = stream;
-    while let Ok(cmd) = read_frame(&mut reader) {
-        let command: AgentCommand = cmd;
+    while let Ok(message) = read_frame::<_, WireMessage>(&mut reader) {
         let coordinator = Coordinator {
             state: state.clone(),
+            token: token.clone(),
         };
-        let response = coordinator.handle_control_command(&command);
+        let response =
+            coordinator.handle_control_command(&message.command, message.token.as_deref());
         let payload = match response {
             Ok(resp) => resp,
             Err(e) => AgentResponse::Error {
