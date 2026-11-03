@@ -82,10 +82,29 @@ impl Iptables {
         // -N fails with "Chain already exists" when the chain is present
         // after a previous run; tolerate it for idempotence.
         self.run_ignoring(&["-N", CHAIN, "-t", "mangle"], &["Chain already exists"])?;
-        // Install the INPUT -> FAULTDECK jump. -I tolerates a pre-existing
-        // jump ("Bad rule (does a matching rule exist...)"). -C only checks
-        // and never installs, which is why DROP rules never took effect.
-        self.run_ignoring(&["-I", "INPUT", "-j", CHAIN, "-t", "mangle"], &["Bad rule"])?;
+        // Install the INPUT -> FAULTDECK jump only if it is not already there.
+        // iptables -I inserts unconditionally and never reports "Bad rule",
+        // so relying on that message to tolerate a pre-existing jump was dead
+        // code: a leftover jump (after agent restart, applied is in-memory)
+        // would accumulate another copy on every apply. -C checks first; only
+        // a missing jump triggers the insert.
+        let jump = ["-C", "INPUT", "-j", CHAIN, "-t", "mangle"];
+        let already_present = match self.run(&jump) {
+            Ok(()) => true,
+            Err(FirewallError::Command(message)) => {
+                // "Bad rule" means no matching rule exists -> not installed.
+                // Any other failure (e.g. iptables missing) propagates below.
+                if message.contains("Bad rule") {
+                    false
+                } else {
+                    return Err(FirewallError::Command(message));
+                }
+            }
+            Err(e) => return Err(e),
+        };
+        if !already_present {
+            self.run_ignoring(&["-I", "INPUT", "-j", CHAIN, "-t", "mangle"], &["Bad rule"])?;
+        }
         Ok(())
     }
 

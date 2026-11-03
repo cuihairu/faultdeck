@@ -7,8 +7,17 @@ fn recorder() -> (Iptables, Arc<Mutex<Vec<String>>>) {
     let calls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let calls2 = calls.clone();
     let runner = Arc::new(move |args: &[&str]| -> Result<(), FirewallError> {
-        calls2.lock().unwrap().push(args.join(" "));
-        Ok(())
+        let joined = args.join(" ");
+        calls2.lock().unwrap().push(joined.clone());
+        // -C is a check: on a fresh host no jump exists yet, so it reports
+        // "Bad rule" and ensure_chain must follow with -I to install it.
+        if args.first() == Some(&"-C") {
+            Err(FirewallError::Command(
+                "Bad rule (does a matching rule exist in that chain?)".into(),
+            ))
+        } else {
+            Ok(())
+        }
     });
     let fw = Iptables {
         dry_run: false,
@@ -59,6 +68,47 @@ fn ensure_chain_tolerates_chain_exists() {
         path: None,
         runner: Some(runner),
     };
+    fw.ensure_chain().unwrap();
+}
+
+#[test]
+fn ensure_chain_is_idempotent_over_jump_lifecycle() {
+    // First call: chain absent -> -C fails with "Bad rule" -> -I installs.
+    // Second call: -C succeeds -> no second -I, so the jump is not duplicated.
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let installed = Arc::new(AtomicBool::new(false));
+    let installed2 = installed.clone();
+    let runner = Arc::new(move |args: &[&str]| -> Result<(), FirewallError> {
+        match args.first() {
+            Some(&"-N") => {
+                if installed2.load(Ordering::SeqCst) {
+                    Err(FirewallError::Command("Chain already exists".into()))
+                } else {
+                    Ok(())
+                }
+            }
+            Some(&"-C") => {
+                if installed2.load(Ordering::SeqCst) {
+                    Ok(())
+                } else {
+                    Err(FirewallError::Command(
+                        "Bad rule (does a matching rule exist in that chain?)".into(),
+                    ))
+                }
+            }
+            Some(&"-I") => {
+                installed2.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    });
+    let fw = Iptables {
+        dry_run: false,
+        path: None,
+        runner: Some(runner),
+    };
+    fw.ensure_chain().unwrap();
     fw.ensure_chain().unwrap();
 }
 
