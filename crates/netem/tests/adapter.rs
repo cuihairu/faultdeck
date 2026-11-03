@@ -210,9 +210,12 @@ fn inject_does_not_delete_foreign_qdisc_on_toctou_failure() {
 
 #[test]
 fn inject_leftover_does_not_delete_foreign_qdisc_on_toctou_failure() {
-    struct ToctouForeignAfterCleanup;
+    struct ToctouForeignAfterCleanup {
+        commands: Arc<Mutex<Vec<String>>>,
+    }
     impl faultdeck_netem::CommandExecutor for ToctouForeignAfterCleanup {
         fn run(&self, command: &faultdeck_netem::TcCommand) -> faultdeck_netem::Result<()> {
+            self.commands.lock().unwrap().push(command.to_string());
             // A leftover 100: qdisc exists, so inject first issues a cleanup
             // `del`. That cleanup is legitimate. The subsequent root `add`
             // fails because a foreign qdisc appeared in the window; the
@@ -240,9 +243,69 @@ fn inject_leftover_does_not_delete_foreign_qdisc_on_toctou_failure() {
             }
         }
     }
-    let adapter = faultdeck_netem::NetemAdapter::with_executor("eth0", ToctouForeignAfterCleanup);
+    let recorder = Recorder::default();
+    let adapter = faultdeck_netem::NetemAdapter::with_executor(
+        "eth0",
+        ToctouForeignAfterCleanup {
+            commands: recorder.commands.clone(),
+        },
+    );
     let result = adapter.inject(&latency());
     assert!(result.is_err());
+    let commands = recorder.commands.lock().unwrap().clone();
+    // The cleanup del must be issued before the add that fails, and the
+    // rollback_cleanup must NOT issue a second del (the failed add never
+    // created our qdisc, so a second del would delete the foreign qdisc).
+    assert_eq!(commands[0], "tc qdisc del dev eth0 root");
+    assert_eq!(
+        commands
+            .iter()
+            .filter(|c| *c == "tc qdisc del dev eth0 root")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn inject_leftover_cleans_own_qdisc_before_reapply() {
+    // A leftover 100: qdisc from a previous crashed run must be removed
+    // before the root qdisc `add`, otherwise `add` fails with "File exists"
+    // and inject can never recover from a crash/restart.
+    // A crash can leave a 100: qdisc behind. inject must issue a cleanup
+    // `del` before the first `add`, otherwise the add fails with "File exists".
+    let recorder = Recorder::default();
+    let recorder2 = recorder.clone();
+    struct Executor {
+        commands: Arc<Mutex<Vec<String>>>,
+    }
+    impl faultdeck_netem::CommandExecutor for Executor {
+        fn run(&self, command: &faultdeck_netem::TcCommand) -> faultdeck_netem::Result<()> {
+            self.commands.lock().unwrap().push(command.to_string());
+            Ok(())
+        }
+        fn run_capture(
+            &self,
+            _command: &faultdeck_netem::TcCommand,
+        ) -> faultdeck_netem::Result<String> {
+            Ok("qdisc prio 100: root refcnt 2\n".to_string())
+        }
+    }
+    let adapter = faultdeck_netem::NetemAdapter::with_executor(
+        "eth0",
+        Executor {
+            commands: recorder2.commands.clone(),
+        },
+    );
+    let commands = adapter.inject(&latency()).unwrap();
+    assert_eq!(
+        recorder.commands.lock().unwrap()[0],
+        "tc qdisc del dev eth0 root"
+    );
+    assert_eq!(
+        recorder.commands.lock().unwrap()[1],
+        "tc qdisc add dev eth0 root handle 100: prio bands 3"
+    );
+    assert_eq!(commands.len(), 5);
 }
 
 #[test]

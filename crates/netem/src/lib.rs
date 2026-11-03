@@ -206,20 +206,16 @@ where
         let leftover = self.preflight()?;
         let commands = self.apply_commands(injection);
         // own_qdisc_created must only become true once our own 100: root
-        // qdisc has actually been created. When a leftover exists, the first
-        // command is a cleanup `del`; marking it as "own qdisc created" would
-        // let a subsequent failed `add` (foreign qdisc appearing in the
-        // TOCTOU window) delete that foreign qdisc via rollback_cleanup().
+        // qdisc has actually been created. Marking the pre-clean del as our
+        // qdisc would let a subsequent failed `add` delete the foreign qdisc
+        // that appeared in the TOCTOU window.
         let mut own_qdisc_created = false;
-        let mut index = 0;
         if leftover {
-            // commands[0] is the cleanup del (see apply_commands + leftover).
-            if let Err(error) = self.executor.run(&commands[0]) {
+            if let Err(error) = self.executor.run(&self.rollback_command()) {
                 return Err(error);
             }
-            index = 1;
         }
-        for command in &commands[index..] {
+        for command in &commands {
             if let Err(error) = self.executor.run(command) {
                 // Only clean up a root qdisc we actually created. If the very
                 // first (root_qdisc) command failed because a foreign qdisc
