@@ -104,8 +104,16 @@ impl Iptables {
     }
 
     pub fn rollback(&self) -> Result<()> {
-        self.run(&["-F", CHAIN, "-t", "mangle"])?;
-        self.run(&["-X", CHAIN, "-t", "mangle"])?;
+        // Remove the INPUT -> FAULTDECK jump first; otherwise -X fails with
+        // "Too many links" because the chain is still referenced. Tolerate a
+        // missing jump ("Bad rule") for idempotence.
+        self.run_ignoring(&["-D", "INPUT", "-j", CHAIN, "-t", "mangle"], &["Bad rule"])?;
+        // Flush then delete the chain, tolerating an absent chain.
+        self.run_ignoring(&["-F", CHAIN, "-t", "mangle"], &["No chain", "No rule"])?;
+        self.run_ignoring(
+            &["-X", CHAIN, "-t", "mangle"],
+            &["No chain", "No rule", "Too many links"],
+        )?;
         Ok(())
     }
 }
