@@ -241,6 +241,11 @@ fn constant_time_eq_matches_only_equal_slices() {
     assert!(!constant_time_eq(b"secret", b"wrong!!"));
     assert!(!constant_time_eq(b"short", b"longer"));
     assert!(constant_time_eq(b"", b""));
+    // Unequal lengths must compare false even when one is a prefix of the
+    // other; the length difference is folded into the accumulator so the
+    // comparison does not rely on an early return.
+    assert!(!constant_time_eq(b"secret", b"secret2"));
+    assert!(!constant_time_eq(b"secret2", b"secret"));
 }
 
 #[test]

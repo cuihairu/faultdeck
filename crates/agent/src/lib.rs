@@ -31,13 +31,18 @@ pub enum AgentError {
 pub type Result<T> = std::result::Result<T, AgentError>;
 
 /// Constant-time byte equality to avoid timing side channels when comparing
-/// an auth token. Length is compared first (public) then bytes XOR-accumulated.
+/// an auth token. The length difference is folded into the accumulator and
+/// the loop runs over the longer slice (missing bytes read as zero), so an
+/// unequal length does not return early and leak the expected length.
 pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
+    let n = a.len().max(b.len());
+    let len_diff = (a.len() as u64) ^ (b.len() as u64);
+    // Fold every byte of the length difference so a mismatch is reflected in
+    // the result even before the byte loop finishes.
+    let mut diff = (len_diff | (len_diff >> 8) | (len_diff >> 16) | (len_diff >> 32)) as u8;
+    for i in 0..n {
+        let x = a.get(i).copied().unwrap_or(0);
+        let y = b.get(i).copied().unwrap_or(0);
         diff |= x ^ y;
     }
     diff == 0
