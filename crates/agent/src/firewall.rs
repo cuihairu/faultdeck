@@ -130,22 +130,29 @@ impl Iptables {
                 args.push("-d".into());
             }
             args.push(format!("{addr}/{prefix}"));
-            // Only restrict to the destination port when the spec says so.
-            if !all_traffic {
-                if let Some(port) = target.destination_port {
+            // Port-level disconnect drops both TCP and UDP on the port; a
+            // single protocol match would leave the other transport untouched.
+            let protocols: &[&str] = if !all_traffic && target.destination_port.is_some() {
+                &["tcp", "udp"]
+            } else {
+                &["any"]
+            };
+            for protocol in protocols {
+                let mut rule = args.clone();
+                if *protocol != "any" {
                     // iptables requires a protocol match for --dport; without
-                    // -p tcp the rule fails with "unknown option --dport" and
-                    // the port-level disconnect rule would never install.
-                    args.push("-p".into());
-                    args.push("tcp".into());
-                    args.push("--dport".into());
-                    args.push(port.to_string());
+                    // -p the rule fails with "unknown option --dport" and the
+                    // port-level disconnect rule would never install.
+                    rule.push("-p".into());
+                    rule.push((*protocol).into());
+                    rule.push("--dport".into());
+                    rule.push(target.destination_port.unwrap().to_string());
                 }
+                rule.push("-j".into());
+                rule.push("DROP".into());
+                let refs: Vec<&str> = rule.iter().map(|s| s.as_str()).collect();
+                self.run(&refs)?;
             }
-            args.push("-j".into());
-            args.push("DROP".into());
-            let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            self.run(&refs)?;
         }
         Ok(())
     }

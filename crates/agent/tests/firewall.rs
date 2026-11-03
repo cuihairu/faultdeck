@@ -155,7 +155,14 @@ fn apply_uses_source_destination_and_port_matches() {
     assert!(calls.iter().any(|c| c.contains("-s 10.0.0.0/8")));
     assert!(calls.iter().any(|c| c.contains("-d 192.0.2.0/24")));
     assert!(calls.iter().any(|c| c.contains("-p tcp")));
+    assert!(calls.iter().any(|c| c.contains("-p udp")));
     assert!(calls.iter().any(|c| c.contains("--dport 443")));
+    assert!(calls
+        .iter()
+        .any(|c| c.contains("-p tcp") && c.contains("--dport 443")));
+    assert!(calls
+        .iter()
+        .any(|c| c.contains("-p udp") && c.contains("--dport 443")));
     assert!(calls.iter().any(|c| c.contains("-j DROP")));
 }
 
