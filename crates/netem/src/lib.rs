@@ -227,7 +227,15 @@ where
     }
 
     pub fn rollback(&self) -> Result<Vec<TcCommand>> {
-        let output = self.executor.run_capture(&self.show_command())?;
+        let output = match self.executor.run_capture(&self.show_command()) {
+            Ok(output) => output,
+            Err(AdapterError::Command { message, .. }) if is_tc_not_found_message(&message) => {
+                // Interface missing / no qdisc: nothing to inspect. The del
+                // below is itself tolerant, so rollback stays idempotent.
+                String::new()
+            }
+            Err(error) => return Err(error),
+        };
         if let Some((kind, handle)) = parse_root_qdisc(&output) {
             if !handle.starts_with(&format!("{PILOT_QDISC_HANDLE}:")) {
                 return Err(AdapterError::ExistingRootQdisc {

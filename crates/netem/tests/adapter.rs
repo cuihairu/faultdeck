@@ -207,3 +207,37 @@ fn inject_does_not_delete_foreign_qdisc_on_toctou_failure() {
     let result = adapter.inject(&latency());
     assert!(result.is_err());
 }
+
+#[test]
+fn rollback_is_idempotent_when_device_missing() {
+    struct MissingDevice;
+    impl faultdeck_netem::CommandExecutor for MissingDevice {
+        fn run(&self, command: &faultdeck_netem::TcCommand) -> faultdeck_netem::Result<()> {
+            if command.arguments.iter().any(|a| a == "del") {
+                return Err(AdapterError::Command {
+                    program: "tc".into(),
+                    arguments: command.arguments.join(" "),
+                    message: "Cannot find device \"eth0\"".into(),
+                });
+            }
+            Ok(())
+        }
+        fn run_capture(
+            &self,
+            command: &faultdeck_netem::TcCommand,
+        ) -> faultdeck_netem::Result<String> {
+            if command.arguments.iter().any(|a| a == "show") {
+                Err(AdapterError::Command {
+                    program: "tc".into(),
+                    arguments: command.arguments.join(" "),
+                    message: "Cannot find device \"eth0\"".into(),
+                })
+            } else {
+                Ok(String::new())
+            }
+        }
+    }
+    let adapter = faultdeck_netem::NetemAdapter::with_executor("eth0", MissingDevice);
+    // Both show and del report "Cannot find device": rollback must succeed.
+    assert!(adapter.rollback().is_ok());
+}
