@@ -19,6 +19,7 @@ fn cli_remote_ping_integration() {
     let firewall = Iptables {
         dry_run: true,
         path: None,
+        runner: None,
     };
     std::thread::spawn(move || {
         if let Ok((stream, _)) = listener.accept() {
@@ -58,6 +59,7 @@ fn cli_replay_command_includes_all_fault_parameters() {
     let firewall = Iptables {
         dry_run: true,
         path: None,
+        runner: None,
     };
     std::thread::spawn(move || {
         if let Ok((stream, _)) = listener.accept() {
@@ -114,4 +116,38 @@ fn cli_replay_command_includes_all_fault_parameters() {
     assert!(content.contains("--port-spec 443"));
     assert!(content.contains("--scenario-name audit-replay"));
     std::fs::remove_file(&report).unwrap();
+}
+
+#[test]
+fn cli_send_times_out_on_unresponsive_server() {
+    use std::net::TcpListener;
+    use std::process::Command;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    // Server accepts the connection but never responds, to trigger a read timeout.
+    let server = std::thread::spawn(move || {
+        let (_stream, _) = listener.accept().unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(3));
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_faultdeck"))
+        .env("FAULTDECK_TIMEOUT_SECS", "1")
+        .args([
+            "remote",
+            "ping",
+            "--host",
+            &addr.ip().to_string(),
+            "--port",
+            &addr.port().to_string(),
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("timed out"),
+        "expected timeout message, got: {stderr}"
+    );
+    server.join().unwrap();
 }

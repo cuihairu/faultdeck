@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 
 use faultdeck_core::{FaultSpec, Injection, Target};
 use ipnet::IpNet;
@@ -22,10 +23,15 @@ pub enum FirewallError {
 
 pub type Result<T> = std::result::Result<T, FirewallError>;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Injected command runner used by tests to observe iptables invocations
+/// without shelling out (avoids /tmp script "Text file busy" races).
+pub type CommandRunner = dyn Fn(&[&str]) -> Result<()> + Send + Sync;
+
+#[derive(Clone, Default)]
 pub struct Iptables {
     pub dry_run: bool,
     pub path: Option<PathBuf>,
+    pub runner: Option<Arc<CommandRunner>>,
 }
 
 impl Iptables {
@@ -38,6 +44,9 @@ impl Iptables {
     }
 
     fn run(&self, args: &[&str]) -> Result<()> {
+        if let Some(runner) = &self.runner {
+            return runner(args);
+        }
         let bin = self.binary()?;
         if self.dry_run {
             return Ok(());

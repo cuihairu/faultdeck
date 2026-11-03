@@ -1,6 +1,7 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::str::FromStr;
+use std::time::Duration;
 
 use clap::{Parser, Subcommand};
 use faultdeck_core::{FaultSpec, Injection, LatencySpec, LossSpec, Target};
@@ -99,6 +100,14 @@ fn send(
     request: &WireRequest,
 ) -> anyhow::Result<String> {
     let mut stream = TcpStream::connect((host, port))?;
+    // Bound the whole request/response so a hung agent cannot block the CLI
+    // forever. Default 5s; overridable via FAULTDECK_TIMEOUT_SECS for tests.
+    let timeout_secs: u64 = std::env::var("FAULTDECK_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(5);
+    stream.set_read_timeout(Some(Duration::from_secs(timeout_secs)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(timeout_secs)))?;
     let body = serde_json::to_string(request)?;
     let mut line = format!("{body}\n");
     if let Some(tok) = token {
@@ -106,7 +115,12 @@ fn send(
     }
     stream.write_all(line.as_bytes())?;
     let mut response = String::new();
-    stream.read_to_string(&mut response)?;
+    if let Err(e) = stream.read_to_string(&mut response) {
+        if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut {
+            anyhow::bail!("timed out after {timeout_secs}s waiting for {host}:{port}");
+        }
+        return Err(e.into());
+    }
     let parsed: WireResponse = serde_json::from_str(response.trim())?;
     match parsed {
         WireResponse::Ok { message } => Ok(message),

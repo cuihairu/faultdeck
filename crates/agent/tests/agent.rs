@@ -68,6 +68,7 @@ fn roundtrip_ping_and_rollback() {
     let firewall = Iptables {
         dry_run: true,
         path: None,
+        runner: None,
     };
     std::thread::spawn(move || {
         if let Ok((stream, _)) = listener.accept() {
@@ -103,6 +104,7 @@ fn roundtrip_inject_then_rollback() {
     let firewall = Iptables {
         dry_run: true,
         path: None,
+        runner: None,
     };
     std::thread::spawn(move || {
         let mut applied = std::collections::HashSet::new();
@@ -151,6 +153,7 @@ fn unauthorized_rejected_without_crash() {
     let firewall = Iptables {
         dry_run: true,
         path: None,
+        runner: None,
     };
     std::thread::spawn(move || {
         if let Ok((stream, _)) = listener.accept() {
@@ -181,6 +184,7 @@ fn serve_preserves_applied_fault_across_connections() {
     let firewall = Iptables {
         dry_run: true,
         path: None,
+        runner: None,
     };
     std::thread::spawn(move || {
         serve_on(
@@ -278,6 +282,7 @@ fn handle_connection_writes_json_error_response() {
     let firewall = Iptables {
         dry_run: true,
         path: None,
+        runner: None,
     };
     let thread = std::thread::spawn(move || {
         if let Ok((stream, _)) = listener.accept() {

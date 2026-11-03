@@ -67,6 +67,7 @@ fn main() -> anyhow::Result<()> {
     let firewall = Iptables {
         dry_run: false,
         path: iptables_path,
+        runner: None,
     };
     serve(config, adapter, firewall)?;
     Ok(())
