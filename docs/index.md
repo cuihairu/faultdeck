@@ -34,3 +34,7 @@ features:
 <div style="text-align:center;margin-top:2rem">
 <img src="/logo.svg" width="64" height="64" alt="FaultDeck logo" />
 </div>
+
+<div style="margin-top:2.5rem">
+<img src="/images/architecture-en.svg" alt="FaultDeck system architecture: CLI sends framed JSON to the coordinator hub; registered agents drive tc netem and iptables faults on target hosts; reports are archived and compared with compare_runs" style="width:100%;max-width:1080px;display:block;margin:0 auto" />
+</div>

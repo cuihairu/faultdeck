@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1360" viewBox="0 0 1280 1360" role="img" aria-labelledby="title desc" xml:lang="en-US">
+<title id="title">FaultDeck · 系统架构</title>
+<desc id="desc">FaultDeck 架构：faultdeck CLI 通过换行分隔的 JSON 行向 faultdeck-coordinator 协调中枢（默认 127.0.0.1:7001）发送指令；中枢维护 agent 注册表与路由并归档运行报告；每台目标主机上的 faultdeck-agent 以 token 鉴权，经 faultdeck-core 校验后驱动 faultdeck-netem tc 适配器（根 qdisc 100: 实现延迟与丢包），断线故障则通过 iptables mangle DROP 实现；faultdeck-report 产出 JSON/HTML 运行报告，含 SHA-256 场景哈希与 compare_runs 历史对比。</desc>
+<defs><marker id="arrow-2563eb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10Z" fill="#2563eb"/></marker><marker id="arrow-087f5b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10Z" fill="#087f5b"/></marker><marker id="arrow-475569" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10Z" fill="#475569"/></marker><marker id="arrow-7c3aed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10Z" fill="#7c3aed"/></marker><marker id="arrow-c2410c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10Z" fill="#c2410c"/></marker></defs>
+<style>text{font-family:Arial,'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#172b4d}.title{font-size:30px;font-weight:700}.name{font-size:19px;font-weight:700}.body{font-size:14px;fill:#435570}.label{font-size:14px;fill:#435570}.edge{fill:none;stroke-linejoin:round}.control{stroke-dasharray:7 5}</style>
+<rect width="1280" height="1360" rx="20" fill="#f8fafc"/>
+<text x="40" y="48" class="title" text-anchor="start">FaultDeck · 系统架构</text>
+<text x="40" y="80" class="body" font-size="17" text-anchor="start">tc netem + iptables 故障注入 · 多目标协调中枢 · 可复现报告</text>
+<path d="M240 210 V300" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M240 210 V300" class="edge " style="stroke:#2563eb;stroke-width:2" marker-end="url(#arrow-2563eb)"/>
+<path d="M240 470 V540" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M240 470 V540" class="edge " style="stroke:#2563eb;stroke-width:2" marker-end="url(#arrow-2563eb)"/>
+<path d="M240 700 V780" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M240 700 V780" class="edge " style="stroke:#087f5b;stroke-width:2" marker-end="url(#arrow-087f5b)"/>
+<path d="M240 950 V1020" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M240 950 V1020" class="edge " style="stroke:#087f5b;stroke-width:2" marker-end="url(#arrow-087f5b)"/>
+<path d="M560 640 H640 V1020" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M560 640 H640 V1020" class="edge control" style="stroke:#c2410c;stroke-width:2" marker-end="url(#arrow-c2410c)"/>
+<path d="M560 580 H880" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M560 580 H880" class="edge " style="stroke:#475569;stroke-width:2" marker-end="url(#arrow-475569)"/>
+<path d="M660 380 H880" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M660 380 H880" class="edge " style="stroke:#7c3aed;stroke-width:2" marker-end="url(#arrow-7c3aed)"/>
+<path d="M420 175 H880" fill="none" stroke="#f8fafc" stroke-width="9"/>
+<path d="M420 175 H880" class="edge control" style="stroke:#7c3aed;stroke-width:2" marker-end="url(#arrow-7c3aed)"/>
+<rect x="60" y="110" width="360" height="100" rx="14" fill="#fff7ed" stroke="#fdba74" stroke-width="1.5"/>
+<text x="76" y="146" class="name" font-size="19" text-anchor="start">FaultDeck CLI — faultdeck-cli</text>
+<text x="76" y="172" class="body" font-size="14" text-anchor="start">remote ping · inject · rollback</text>
+<text x="76" y="198" class="body" font-size="14" text-anchor="start">每次调用建立一条 TCP 连接</text>
+<rect x="60" y="300" width="600" height="170" rx="14" fill="#eef2f7" stroke="#64748b" stroke-width="1.5"/>
+<text x="76" y="336" class="name" font-size="19" text-anchor="start">faultdeck-coordinator — 多目标协调中枢</text>
+<text x="76" y="362" class="body" font-size="14" text-anchor="start">默认监听 127.0.0.1:7001</text>
+<text x="76" y="388" class="body" font-size="14" text-anchor="start">AgentCommand: register · heartbeat · inject · rollback</text>
+<text x="76" y="414" class="body" font-size="14" text-anchor="start">fetch_report · list_agents · agent 注册表 + 路由</text>
+<text x="76" y="440" class="body" font-size="14" text-anchor="start">报告归档 — inject/rollback 已排队（派发待接线）</text>
+<rect x="60" y="540" width="500" height="160" rx="14" fill="#eef2f7" stroke="#64748b" stroke-width="1.5"/>
+<text x="76" y="576" class="name" font-size="19" text-anchor="start">faultdeck-agent · 目标主机驻留</text>
+<text x="76" y="602" class="body" font-size="14" text-anchor="start">token 鉴权 · 单活跃故障状态</text>
+<text x="76" y="628" class="body" font-size="14" text-anchor="start">管理网重叠防护（overlap guard）</text>
+<text x="76" y="654" class="body" font-size="14" text-anchor="start">validate_injection（faultdeck-core）</text>
+<text x="76" y="680" class="body" font-size="14" text-anchor="start">驱动 tc netem + iptables 防火墙</text>
+<rect x="60" y="780" width="500" height="170" rx="14" fill="#eef2f7" stroke="#64748b" stroke-width="1.5"/>
+<text x="76" y="816" class="name" font-size="19" text-anchor="start">faultdeck-netem — tc 适配器</text>
+<text x="76" y="842" class="body" font-size="14" text-anchor="start">plan() → 预检 tc qdisc show</text>
+<text x="76" y="868" class="body" font-size="14" text-anchor="start">下发 tc qdisc 100: + filter（延迟 / 丢包）</text>
+<text x="76" y="894" class="body" font-size="14" text-anchor="start">失败即回滚 · 清理残留 qdisc</text>
+<text x="76" y="920" class="body" font-size="14" text-anchor="start">断线不走 tc → iptables mangle DROP</text>
+<rect x="880" y="480" width="340" height="170" rx="14" fill="#ffffff" stroke="#475569" stroke-width="1.5"/>
+<text x="896" y="516" class="name" font-size="19" text-anchor="start">faultdeck-core — 共享模型</text>
+<text x="896" y="542" class="body" font-size="14" text-anchor="start">FaultSpec：延迟 · 丢包 · 断线</text>
+<text x="896" y="568" class="body" font-size="14" text-anchor="start">Target · Injection</text>
+<text x="896" y="594" class="body" font-size="14" text-anchor="start">validate_injection 校验</text>
+<text x="896" y="620" class="body" font-size="14" text-anchor="start">管理网重叠检查</text>
+<rect x="880" y="110" width="340" height="230" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="896" y="146" class="name" font-size="19" text-anchor="start">faultdeck-report</text>
+<text x="896" y="172" class="body" font-size="14" text-anchor="start">Scenario · RunReport（JSON / HTML）</text>
+<text x="896" y="198" class="body" font-size="14" text-anchor="start">SHA-256 场景哈希</text>
+<text x="896" y="224" class="body" font-size="14" text-anchor="start">compare_runs → HistoricalDiff</text>
+<text x="896" y="250" class="body" font-size="14" text-anchor="start">时间线 + 恢复验证记录</text>
+<rect x="60" y="1020" width="700" height="200" rx="14" fill="#ffffff" stroke="#087f5b" stroke-width="1.5"/>
+<text x="76" y="1054" class="name" font-size="17" text-anchor="start">目标主机（游戏服务器）</text>
+<rect x="80" y="1075" width="300" height="120" rx="14" fill="#f0fdf4" stroke="#087f5b" stroke-width="1.5"/>
+<text x="96" y="1109" class="name" font-size="17" text-anchor="start">eth0 — netem qdisc 100:</text>
+<text x="96" y="1135" class="body" font-size="13" text-anchor="start">延迟 · 丢包</text>
+<text x="96" y="1159" class="body" font-size="13" text-anchor="start">由 netem 适配器规划下发</text>
+<rect x="420" y="1075" width="320" height="120" rx="14" fill="#fff7ed" stroke="#c2410c" stroke-width="1.5"/>
+<text x="436" y="1109" class="name" font-size="17" text-anchor="start">防火墙 — iptables -t mangle</text>
+<text x="436" y="1135" class="body" font-size="13" text-anchor="start">DROP 规则 = 断线故障</text>
+<text x="436" y="1159" class="body" font-size="13" text-anchor="start">由 agent 下发并可回滚</text>
+<text x="252" y="258" class="label" font-size="14" text-anchor="start">换行分隔 JSON 行</text>
+<text x="252" y="512" class="label" font-size="14" text-anchor="start">TCP :7001 · 换行分隔 JSON</text>
+<text x="252" y="748" class="label" font-size="14" text-anchor="start">FaultSpec → plan()</text>
+<text x="252" y="992" class="label" font-size="14" text-anchor="start">tc qdisc 100: · 延迟 / 丢包</text>
+<text x="652" y="860" class="label" font-size="14" text-anchor="start">iptables -t mangle DROP（断线）</text>
+<text x="600" y="574" class="label" font-size="14" text-anchor="start">validate_injection 校验</text>
+<text x="700" y="372" class="label" font-size="14" text-anchor="start">归档 RunReport</text>
+<text x="460" y="167" class="label" font-size="14" text-anchor="start">compare_runs（基线 vs 本次）</text>
+<path d="M60 1310 H130" fill="none" class="edge " style="stroke:#2563eb;stroke-width:2"/>
+<text x="140" y="1315" class="label" font-size="14" text-anchor="start">控制 / 指令流</text>
+<path d="M299.6 1310 H369.6" fill="none" class="edge " style="stroke:#087f5b;stroke-width:2"/>
+<text x="379.6" y="1315" class="label" font-size="14" text-anchor="start">tc netem 注入</text>
+<path d="M543.4000000000001 1310 H613.4000000000001" fill="none" class="edge control" style="stroke:#c2410c;stroke-width:2"/>
+<text x="623.4000000000001" y="1315" class="label" font-size="14" text-anchor="start">iptables 断线</text>
+<path d="M787.2 1310 H857.2" fill="none" class="edge control" style="stroke:#7c3aed;stroke-width:2"/>
+<text x="867.2" y="1315" class="label" font-size="14" text-anchor="start">报告 / compare_runs</text>
+</svg>

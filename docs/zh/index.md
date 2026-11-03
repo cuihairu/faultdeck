@@ -34,3 +34,7 @@ features:
 <div style="text-align:center;margin-top:2rem">
 <img src="/logo.svg" width="64" height="64" alt="FaultDeck logo" />
 </div>
+
+<div style="margin-top:2.5rem">
+<img src="/images/architecture-zh.svg" alt="FaultDeck 系统架构：CLI 向协调中枢发送 JSON 指令；各目标主机上的 agent 通过 tc netem 与 iptables 注入故障；报告统一归档并可用 compare_runs 对比" style="width:100%;max-width:1080px;display:block;margin:0 auto" />
+</div>
