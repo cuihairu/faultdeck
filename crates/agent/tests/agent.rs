@@ -2,7 +2,9 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 
 use faultdeck_agent::firewall::Iptables;
-use faultdeck_agent::{authorize, guard_management, handle_connection, AgentConfig, Request};
+use faultdeck_agent::{
+    authorize, guard_management, handle_connection, serve_on, AgentConfig, Request,
+};
 use faultdeck_core::{FaultSpec, Injection, LatencySpec, Target};
 use faultdeck_netem::NetemAdapter;
 use ipnet::IpNet;
@@ -168,4 +170,41 @@ fn unauthorized_rejected_without_crash() {
     let mut buf = String::new();
     stream.read_to_string(&mut buf).unwrap();
     assert!(buf.contains("unauthorized"));
+}
+
+#[test]
+fn serve_preserves_applied_fault_across_connections() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let cfg = config();
+    let adapter = NetemAdapter::dry_run("eth0");
+    let firewall = Iptables {
+        dry_run: true,
+        path: None,
+    };
+    std::thread::spawn(move || {
+        serve_on(
+            cfg,
+            adapter,
+            firewall,
+            listener,
+            std::collections::HashSet::new(),
+        )
+        .unwrap();
+    });
+
+    let mut stream = TcpStream::connect(addr).unwrap();
+    let injection = serde_json::to_string(&Request::Inject(latency())).unwrap();
+    stream
+        .write_all(format!("{injection}\n").as_bytes())
+        .unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    assert!(response.contains("fault applied"));
+
+    let mut stream = TcpStream::connect(addr).unwrap();
+    stream.write_all(b"{\"cmd\":\"rollback\"}\n").unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    assert!(response.contains("fault rolled back"));
 }

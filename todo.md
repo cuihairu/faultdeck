@@ -28,3 +28,24 @@
   - 属实并已修复：删除占位 use 与 _type_assertions，导入收敛为实际使用项。commit fd-audit-netem `crates/netem/src/lib.rs:1-5`（重写后无占位导入）。
 - [x] 审核发现：本轮 diff 未见命令注入/反序列化越界/资源泄漏问题——tc 以 argv 直接 exec（无 shell 拼接，interface 注入不可行），Injection/LossSpec/LatencySpec 均为简单值类型无递归/无共享引用，无文件句柄或网络资源滞留；安全与泄漏层面结论为通过。
   - 属实（审核通过结论，非缺陷）。复核确认：tc 以 argv 直接 exec 无 shell 拼接、类型均为简单值无递归引用、无资源滞留。该项维持通过结论，无需改动。commit fd-audit-netem `crates/netem/src/lib.rs`（本轮审计通过）。
+
+## 审核发现
+
+- [x] 审核发现：serve() 为每条连接新建 applied HashSet 且每条连接只处理一条请求——CLI 每次调用都是新连接，remote rollback 永远返回 "nothing to roll back"，已注入的 netem/iptables 故障滞留；"another fault is already applied" 单故障保护在真实 serve() 路径永不触发，与 docs/quickstart.md:72 所述行为矛盾（crates/agent/src/lib.rs:228-229,114-117,146-150）
+  - 属实并已修复：serve() 拆为 serve_on()，applied 状态改为跨连接共享 Arc<Mutex<HashSet>>，rollback 在真实 serve() 路径可清除已注入故障；新增 serve_preserves_applied_fault_across_connections 测试。commit b260cb9 crates/agent/src/lib.rs（serve_on 共享状态）、crates/agent/tests/agent.rs（跨连接回归测试）。
+- [ ] 审核发现：firewall.ensure_chain() 只执行 -N 创建链 + -C 检查跳转，从不执行 -A/-I 安装 INPUT→FAULTDECK 跳转规则；且链已存在时 -N 直接报错——disconnect 故障的 DROP 规则永远不会生效，apply() 在链残留或首次部署时必然失败（crates/agent/src/firewall.rs:58-62）
+- [ ] 审核发现：firewall.rollback() 仅 -F/-X，从不删除 INPUT 里的 -j FAULTDECK 跳转，iptables -X 删除被其他链引用的链必失败（"Too many links"），且 -F/-X 对不存在的链硬报错不幂等——真机上 disconnect 无法回滚（crates/agent/src/firewall.rs:87-91）
+- [ ] 审核发现：firewall.apply() 对 target.networks()（含 source 与 destination）一律生成 -d 规则，source 网段被错误当作目标匹配；且完全忽略 destination_port 与 DisconnectSpec.all_traffic——带 --port-spec 的 disconnect 会 DROP 整个目标网段而非指定端口，全量断网(all_traffic)字段形同虚设（crates/agent/src/firewall.rs:64-85；crates/cli/src/main.rs:138-157）
+- [ ] 审核发现：handle_connection 先 read_line 无上限读取整行，MAX_INJECTION_BYTES(64KiB) 在整行读入内存后才校验——客户端发送无换行的大包可致 agent 内存耗尽(DoS)；transport::read_frame 同样无行长上限（crates/agent/src/lib.rs:183,203；crates/agent/src/transport.rs:36）
+- [ ] 审核发现：RunReport::to_html 将 scenario_name/event.kind/event.message/restore detail/assertion detail/replay_command 直接以 {} 拼入 HTML 不做转义——含 <script> 的场景名/事件消息可致报告 HTML 存储型 XSS（crates/report/src/lib.rs:92-135）
+- [ ] 审核发现：coordinator serve() 无任何鉴权（任何可达客户端可 register/heartbeat/inject/list/fetch_report），且 AgentCommand::Inject 不做 core 校验与管理网段守卫、对未知 id 仍返回 "queued"，与 Heartbeat 的 NotRegistered 行为不一致（crates/coordinator/src/lib.rs:156-166,121-131）
+- [ ] 审核发现：netem inject() 在 preflight 后再次 cleanup_command_for_leftover 重复执行 tc qdisc show，且两段检查之间存在 TOCTOU：若 add 时接口出现外部 root qdisc 导致失败，rollback_cleanup() 会无条件 `tc qdisc del dev <if> root` 误删该外部 qdisc（crates/netem/src/lib.rs:202-218,264-273）
+- [ ] 审核发现：rollback()/preflight() 开头 run_capture(tc qdisc show) 对接口缺失/外部 qdisc 的 "No such device" 等消息硬返回 Err，与随后 del 命令对同类消息用 is_tc_not_found_message 容忍的策略不一致——接口消失时 rollback 不再幂等（crates/netem/src/lib.rs:220-238,457-462）
+- [ ] 审核发现：parse_root_qdisc 在循环内用 tokens.next()? 遇截断 "qdisc" 行即返回 None 提前终止整段扫描，后续外部 root qdisc 行会被漏检（crates/netem/src/lib.rs:464-477）
+- [ ] 审核发现：validate() 将 CoreError::OverlapsManagement 映射为 AdapterError::EmptyTarget（"fault target is empty"）——错误语义误导，且 core 当前不产生该错误，属死分支（crates/netem/src/lib.rs:437）
+- [ ] 审核发现：token 用非常量时间 == 比较且明文经 TCP 传输（mTLS 未实现），bind 0.0.0.0 且未配 token 时无告警（仅 management 为空有告警）——agent 可被远程无鉴权控制（crates/agent/src/lib.rs:67-70；crates/agent/src/main.rs:59-62）
+- [ ] 审核发现：wire 协议脆弱——即使未配置 token，首个空格仍被当作 token 分隔符，含空格的 payload（如 pretty-printed JSON）会被截断破坏；超限 payload 与 JSON 解码失败路径直接返回 Err 不写响应，客户端只见 EOF+解码错误无明确消息（crates/agent/src/lib.rs:188-207）
+- [ ] 审核发现：CLI 生成的 replay_command 不含 --milliseconds/--percent/--port-spec，latency/loss 场景的一键重现命令不完整、不可复现（crates/cli/src/main.rs:172-182）
+- [ ] 审核发现：测试缺口——crates/agent/src/firewall.rs 无任何单元/集成测试（真实 iptables 路径全未测，仅 dry_run 被用到），ensure_chain/apply/rollback 的生命周期缺陷未被捕获（crates/agent/src/firewall.rs）
+- [ ] 审核发现：测试缺口——serve() 的每连接状态循环无测试（agent/cli 测试均为手动共享 HashSet 或直接调用 handle_connection），per-connection applied 缺陷未暴露；coordinator serve()/handle_stream 亦无 TCP 集成测试（crates/agent/tests/agent.rs:75-160；crates/cli/tests/remote.rs:31-41；crates/coordinator/tests/coordinator.rs）
+- [ ] 审核发现：测试缺口——RunReport::to_html 无转义/恶意输入测试，CLI send() 无端到端测试、无超时（read_to_string 可永久阻塞）与无 token 默认配置下的行为测试（crates/report/tests/report.rs；crates/cli/src/main.rs:95-115）

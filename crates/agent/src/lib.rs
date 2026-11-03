@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use faultdeck_core::{overlaps_management, Injection};
 use faultdeck_netem::NetemAdapter;
@@ -217,15 +217,26 @@ where
 }
 
 pub fn serve(config: AgentConfig, adapter: NetemAdapter, firewall: Iptables) -> Result<()> {
-    let config = Arc::new(config);
     let listener = TcpListener::bind(&config.bind)?;
+    serve_on(config, adapter, firewall, listener, HashSet::new())
+}
+
+pub fn serve_on(
+    config: AgentConfig,
+    adapter: NetemAdapter,
+    firewall: Iptables,
+    listener: TcpListener,
+    applied: HashSet<String>,
+) -> Result<()> {
+    let config = Arc::new(config);
     eprintln!("agent listening on {}", listener.local_addr()?);
+    let applied = Arc::new(Mutex::new(applied));
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 let cfg = config.clone();
                 let adapter = adapter.clone();
-                let mut applied = HashSet::new();
+                let mut applied = applied.lock().unwrap();
                 let _ = handle_connection(&cfg, &adapter, &firewall, &mut applied, stream);
             }
             Err(e) => eprintln!("accept error: {e}"),
