@@ -33,7 +33,8 @@
 
 - [x] 审核发现：serve() 为每条连接新建 applied HashSet 且每条连接只处理一条请求——CLI 每次调用都是新连接，remote rollback 永远返回 "nothing to roll back"，已注入的 netem/iptables 故障滞留；"another fault is already applied" 单故障保护在真实 serve() 路径永不触发，与 docs/quickstart.md:72 所述行为矛盾（crates/agent/src/lib.rs:228-229,114-117,146-150）
   - 属实并已修复：serve() 拆为 serve_on()，applied 状态改为跨连接共享 Arc<Mutex<HashSet>>，rollback 在真实 serve() 路径可清除已注入故障；新增 serve_preserves_applied_fault_across_connections 测试。commit b260cb9 crates/agent/src/lib.rs（serve_on 共享状态）、crates/agent/tests/agent.rs（跨连接回归测试）。
-- [ ] 审核发现：firewall.ensure_chain() 只执行 -N 创建链 + -C 检查跳转，从不执行 -A/-I 安装 INPUT→FAULTDECK 跳转规则；且链已存在时 -N 直接报错——disconnect 故障的 DROP 规则永远不会生效，apply() 在链残留或首次部署时必然失败（crates/agent/src/firewall.rs:58-62）
+- [x] 审核发现：firewall.ensure_chain() 只执行 -N 创建链 + -C 检查跳转，从不执行 -A/-I 安装 INPUT→FAULTDECK 跳转规则；且链已存在时 -N 直接报错——disconnect 故障的 DROP 规则永远不会生效，apply() 在链残留或首次部署时必然失败（crates/agent/src/firewall.rs:58-62）
+  - 属实并已修复：ensure_chain() 现幂等创建链（容忍 "Chain already exists"）并安装 INPUT→FAULTDECK 跳转（容忍 "Bad rule"）；新增 ensure_chain_is_idempotent_over_lifecycle 测试。commit 78a4575 crates/agent/src/firewall.rs、crates/agent/tests/firewall.rs。
 - [ ] 审核发现：firewall.rollback() 仅 -F/-X，从不删除 INPUT 里的 -j FAULTDECK 跳转，iptables -X 删除被其他链引用的链必失败（"Too many links"），且 -F/-X 对不存在的链硬报错不幂等——真机上 disconnect 无法回滚（crates/agent/src/firewall.rs:87-91）
 - [ ] 审核发现：firewall.apply() 对 target.networks()（含 source 与 destination）一律生成 -d 规则，source 网段被错误当作目标匹配；且完全忽略 destination_port 与 DisconnectSpec.all_traffic——带 --port-spec 的 disconnect 会 DROP 整个目标网段而非指定端口，全量断网(all_traffic)字段形同虚设（crates/agent/src/firewall.rs:64-85；crates/cli/src/main.rs:138-157）
 - [ ] 审核发现：handle_connection 先 read_line 无上限读取整行，MAX_INJECTION_BYTES(64KiB) 在整行读入内存后才校验——客户端发送无换行的大包可致 agent 内存耗尽(DoS)；transport::read_frame 同样无行长上限（crates/agent/src/lib.rs:183,203；crates/agent/src/transport.rs:36）

@@ -55,9 +55,28 @@ impl Iptables {
         }
     }
 
+    /// Run a command, treating a specific failure message as success so the
+    /// chain/rule lifecycle can be idempotent (e.g. "chain already exists").
+    fn run_ignoring(&self, args: &[&str], messages: &[&str]) -> Result<()> {
+        match self.run(args) {
+            Ok(()) => Ok(()),
+            Err(FirewallError::Command(message))
+                if messages.iter().any(|m| message.contains(m)) =>
+            {
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     pub fn ensure_chain(&self) -> Result<()> {
-        self.run(&["-N", CHAIN, "-t", "mangle"])?;
-        self.run(&["-C", "INPUT", "-j", CHAIN, "-t", "mangle"])?;
+        // -N fails with "Chain already exists" when the chain is present
+        // after a previous run; tolerate it for idempotence.
+        self.run_ignoring(&["-N", CHAIN, "-t", "mangle"], &["Chain already exists"])?;
+        // Install the INPUT -> FAULTDECK jump. -I tolerates a pre-existing
+        // jump ("Bad rule (does a matching rule exist...)"). -C only checks
+        // and never installs, which is why DROP rules never took effect.
+        self.run_ignoring(&["-I", "INPUT", "-j", CHAIN, "-t", "mangle"], &["Bad rule"])?;
         Ok(())
     }
 
