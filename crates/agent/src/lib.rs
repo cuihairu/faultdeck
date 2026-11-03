@@ -241,15 +241,27 @@ where
 {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut writer = stream;
-    let first_line = read_line_limited(&mut reader, MAX_INJECTION_BYTES)?;
+    let first_line = match read_line_limited(&mut reader, MAX_INJECTION_BYTES) {
+        Ok(line) => line,
+        Err(_) => {
+            // Oversized or invalid line: write an explicit error instead of
+            // dropping the connection silently (client saw EOF with no message).
+            let _ = writer
+                .write_all(b"{\"status\":\"error\",\"message\":\"line too large or invalid\"}\n");
+            return Ok(());
+        }
+    };
     let header = first_line.trim();
     if header.is_empty() {
         let _ = writer.write_all(b"{\"status\":\"error\",\"message\":\"missing token header\"}\n");
         return Ok(());
     }
-    let (maybe_token, payload) = match header.split_once(' ') {
-        Some((token, rest)) => (Some(token), rest),
-        None => (None, header),
+    // Only split the first token off as auth when a token is configured.
+    // Without a token, a payload may legitimately contain spaces (e.g.
+    // pretty-printed JSON), so the whole header is treated as the payload.
+    let (maybe_token, payload) = match (config.token.is_some(), header.split_once(' ')) {
+        (true, Some((token, rest))) => (Some(token), rest),
+        _ => (None, header),
     };
     if let Err(e) = authorize(config, maybe_token) {
         let _ = writer.write_all(
@@ -262,15 +274,34 @@ where
         return Ok(());
     }
     if payload.len() > MAX_INJECTION_BYTES {
-        return Err(AgentError::InvalidCommand {
-            reason: "injection payload too large".into(),
-        });
+        let _ = writer
+            .write_all(b"{\"status\":\"error\",\"message\":\"injection payload too large\"}\n");
+        return Ok(());
     }
-    let request: Request = serde_json::from_str(payload)?;
+    let request: Request = match serde_json::from_str(payload) {
+        Ok(request) => request,
+        Err(e) => {
+            let _ = writer.write_all(
+                format!(
+                    "{{\"status\":\"error\",\"message\":{}}}\n",
+                    serde_json::to_string(&format!("invalid json: {e}"))?
+                )
+                .as_bytes(),
+            );
+            return Ok(());
+        }
+    };
     if let Request::Inject(ref injection) = request {
-        faultdeck_core::validate_injection(injection).map_err(|e| AgentError::InvalidCommand {
-            reason: e.to_string(),
-        })?;
+        if let Err(e) = faultdeck_core::validate_injection(injection) {
+            let _ = writer.write_all(
+                format!(
+                    "{{\"status\":\"error\",\"message\":{}}}\n",
+                    serde_json::to_string(&e.to_string())?
+                )
+                .as_bytes(),
+            );
+            return Ok(());
+        }
     }
     let response = process_request(config, adapter, firewall, request, applied);
     let _ = writer.write_all(format!("{}\n", serde_json::to_string(&response)?).as_bytes());

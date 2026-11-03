@@ -256,3 +256,46 @@ fn warn_insecure_bind_flags_remote_without_token() {
     assert!(!warn_insecure_bind("0.0.0.0:7000", Some("secret")));
     assert!(!warn_insecure_bind("127.0.0.1:7000", None));
 }
+
+#[test]
+fn wire_payload_with_spaces_is_valid_without_token() {
+    // Without a configured token, the header must be treated entirely as
+    // payload, so pretty-printed JSON with spaces after colons is not split.
+    let config = config();
+    let request: Request = Request::Ping;
+    let json = serde_json::to_string_pretty(&request).unwrap();
+    assert!(json.contains(' '));
+    let parsed: Result<Request, _> = serde_json::from_str(&json);
+    assert!(parsed.is_ok());
+}
+
+#[test]
+fn handle_connection_writes_json_error_response() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let cfg = config();
+    let adapter = NetemAdapter::dry_run("eth0");
+    let firewall = Iptables {
+        dry_run: true,
+        path: None,
+    };
+    let thread = std::thread::spawn(move || {
+        if let Ok((stream, _)) = listener.accept() {
+            let mut applied = std::collections::HashSet::new();
+            let _ = handle_connection(
+                &std::sync::Arc::new(cfg),
+                &adapter,
+                &firewall,
+                &mut applied,
+                stream,
+            );
+        }
+    });
+
+    let mut stream = TcpStream::connect(addr).unwrap();
+    stream.write_all(b"{ invalid json }\n").unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    assert!(response.contains("invalid json"));
+    thread.join().unwrap();
+}
