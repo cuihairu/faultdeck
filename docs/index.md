@@ -7,6 +7,9 @@ hero:
   tagline: Simulate latency, packet loss, disconnects and partitions as reproducible, automated test scenarios — for game development testing.
   actions:
     - theme: brand
+      text: Get Started
+      link: /quickstart
+    - theme: alt
       text: MVP Plan
       link: /design/mvp-plan
     - theme: alt

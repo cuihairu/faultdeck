@@ -7,6 +7,9 @@ hero:
   tagline: 把延迟、丢包、断线、网络隔离做成可复现、可自动化的测试场景——为游戏开发测试服务。
   actions:
     - theme: brand
+      text: 快速开始
+      link: /zh/quickstart
+    - theme: alt
       text: MVP 计划
       link: /zh/design/mvp-plan
     - theme: alt
