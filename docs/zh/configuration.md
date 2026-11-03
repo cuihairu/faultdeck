@@ -27,10 +27,10 @@ FaultDeck 没有配置文件 —— 一切都在进程启动时以 CLI 参数传
 ## faultdeck-coordinator
 
 ```bash
-faultdeck-coordinator [BIND]     # 默认 127.0.0.1:7001
+faultdeck-coordinator --bind 127.0.0.1:7001 [--token <shared-secret>]
 ```
 
-仅一个位置参数。状态(注册表、报告归档、路由)均在内存。
+`--bind` 默认为 `127.0.0.1:7001`。`--token` 可选;设置后每条线上消息都必须携带匹配的 token(见 `remote-agents.md`)。状态(注册表、报告归档、路由)均在内存。
 
 ## faultdeck(CLI)
 

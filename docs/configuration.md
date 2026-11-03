@@ -27,10 +27,12 @@ Behavioral constants (compiled in, not configurable):
 ## faultdeck-coordinator
 
 ```bash
-faultdeck-coordinator [BIND]     # default 127.0.0.1:7001
+faultdeck-coordinator --bind 127.0.0.1:7001 [--token <shared-secret>]
 ```
 
-One positional argument only. State (registry, report archive, routes) is in-memory.
+`--bind` defaults to `127.0.0.1:7001`. `--token` is optional; when set, every
+wire message must carry the matching token (see `remote-agents.md`). State
+(registry, report archive, routes) is in-memory.
 
 ## faultdeck (CLI)
 
