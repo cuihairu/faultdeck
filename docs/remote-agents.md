@@ -39,22 +39,26 @@ Note on lifecycle: the applied-fault state is per-connection (a fresh `HashSet` 
 
 ## Coordinator registration
 
-The coordinator (default port `7001`) keeps a registry of agents. The protocol reuses the same newline-framed JSON transport:
+The coordinator (default port `7001`) keeps a registry of agents. The protocol
+reuses the same newline-framed JSON transport. Every request is wrapped in a
+`WireMessage` envelope `{"token":…,"command":…}`; when the coordinator is
+started with `--token`, the `token` field must match (compared in constant
+time) or the request is rejected with `Unauthorized`:
 
 ```json
-{"cmd":"register","identity":{"id":"game-01","capabilities":["netem","firewall"],"last_seen_ms":1730000000000}}
+{"token":"<secret-or-null>","command":{"cmd":"register","identity":{"id":"game-01","capabilities":["netem","firewall"],"last_seen_ms":1730000000000}}}
 → {"status":"registered","id":"game-01"}
 
-{"cmd":"heartbeat","id":"game-01"}
+{"token":"<secret-or-null>","command":{"cmd":"heartbeat","id":"game-01"}}
 → {"status":"ok","message":"heartbeat ok"}        // "not registered" error if unknown id
 
-{"cmd":"list_agents"}
+{"token":"<secret-or-null>","command":{"cmd":"list_agents"}}
 → {"status":"agents","agents":[ …AgentIdentity… ]}
 
-{"cmd":"fetch_report","id":"game-01","scenario_hash":"<sha256>"}
+{"token":"<secret-or-null>","command":{"cmd":"fetch_report","id":"game-01","scenario_hash":"<sha256>"}}
 → {"status":"report","report":{ …RunReport… }}    // or error "report not found"
 
-{"cmd":"inject","id":"game-01","injection":{ … }}
+{"token":"<secret-or-null>","command":{"cmd":"inject","id":"game-01","injection":{ … }}}
 → {"status":"ok","message":"queued for game-01"}  // queued; live dispatch not wired yet
 ```
 
