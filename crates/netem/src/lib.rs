@@ -211,9 +211,7 @@ where
         // that appeared in the TOCTOU window.
         let mut own_qdisc_created = false;
         if leftover {
-            if let Err(error) = self.executor.run(&self.rollback_command()) {
-                return Err(error);
-            }
+            self.executor.run(&self.rollback_command())?;
         }
         for command in &commands {
             if let Err(error) = self.executor.run(command) {

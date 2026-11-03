@@ -266,7 +266,7 @@ fn serve_accepts_tcp_register_and_list() {
         let _ = serve_on_with_token(state, listener, Some("secret".into()));
     });
 
-    let mut stream = TcpStream::connect(addr).unwrap();
+    let stream = TcpStream::connect(addr).unwrap();
     let mut writer = BufWriter::new(stream.try_clone().unwrap());
     send_frame(
         &mut writer,

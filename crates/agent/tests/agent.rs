@@ -227,7 +227,7 @@ fn oversized_line_is_rejected_without_buffering() {
 fn oversized_frame_is_rejected() {
     use faultdeck_agent::transport::{read_frame, MAX_FRAME_BYTES};
     let mut data = b"{\"cmd\":\"".to_vec();
-    data.extend(std::iter::repeat(b'a').take(MAX_FRAME_BYTES));
+    data.extend(std::iter::repeat_n(b'a', MAX_FRAME_BYTES));
     data.push(b'\n');
     let mut reader = std::io::BufReader::new(data.as_slice());
     let result: Result<faultdeck_agent::Request, _> = read_frame(&mut reader);
@@ -270,7 +270,7 @@ fn warn_insecure_bind_flags_remote_without_token() {
 fn wire_payload_with_spaces_is_valid_without_token() {
     // Without a configured token, the header must be treated entirely as
     // payload, so pretty-printed JSON with spaces after colons is not split.
-    let config = config();
+    let _config = config();
     let request: Request = Request::Ping;
     let json = serde_json::to_string_pretty(&request).unwrap();
     assert!(json.contains(' '));

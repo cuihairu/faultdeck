@@ -31,7 +31,7 @@ fn recorder() -> (Iptables, Arc<Mutex<Vec<String>>>) {
 fn failing(prefix: &str) -> Iptables {
     let prefix = prefix.to_string();
     let runner = Arc::new(move |args: &[&str]| -> Result<(), FirewallError> {
-        if args.first().map(|s| *s) == Some(prefix.as_str()) {
+        if args.first().copied() == Some(prefix.as_str()) {
             Err(FirewallError::Command("simulated failure".into()))
         } else {
             Ok(())
