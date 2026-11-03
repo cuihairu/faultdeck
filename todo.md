@@ -92,6 +92,7 @@
   - 属实并已修复：--port-spec 端口级断连改为同时安装 `-p tcp` 与 `-p udp` 两条 `--dport` DROP 规则，覆盖完整端口断连语义。证据：`crates/agent/src/firewall.rs:135-151`（tcp+udp 循环）、`crates/agent/tests/firewall.rs:153-158`（断言 tcp+udp 均含 --dport）；`cargo test -p faultdeck-agent --test firewall apply_uses_source_destination_and_port_matches` → 1 passed。
 - [x] 审核发现：constant_time_eq 在长度不等时提前 return false，token 长度经时序泄漏（agent 与 coordinator 共用同一函数）；commit 9efe696 声称"消除时序侧信道"仅消除字节级差异，长度仍可测（crates/agent/src/lib.rs:35-44；crates/coordinator/src/lib.rs:124）
   - 属实并已修复：`constant_time_eq` 不再在长度不等时提前返回；长度差被折叠进累计器，循环遍历较长切片并对缺失字节补零，等长/不等长均走相同循环长度，消除长度时序分支。证据：`crates/agent/src/lib.rs:35-53`、`crates/agent/tests/agent.rs:238-251`（新增前缀长度不等的负例）；`cargo test -p faultdeck-agent --test agent constant_time_eq` → 1 passed。
-- [ ] 审核发现：测试缺口——cli_replay_command_quotes_shell_metacharacters 仅断言生成串含单引号包裹，未通过 `sh -c` 实际执行验证可安全运行，也未覆盖值内含单引号 `'`（走 `'\''` 转义分支）的情形（crates/cli/tests/remote.rs:122-192；crates/cli/src/main.rs:143）
+- [x] 审核发现：测试缺口——cli_replay_command_quotes_shell_metacharacters 仅断言生成串含单引号包裹，未通过 `sh -c` 实际执行验证可安全运行，也未覆盖值内含单引号 `'`（走 `'\''` 转义分支）的情形（crates/cli/tests/remote.rs:122-192；crates/cli/src/main.rs:143）
+  - 属实并已补测试：现测试读取 JSON 中的 `replay_command`，把 CLI 二进制目录加入 PATH 后通过 `sh -c` 实际执行；另新增含单引号场景名用例，断言生成 `'\''` 转义并同样 `sh -c` 执行成功。证据：`crates/cli/tests/remote.rs:121-227`；`cargo test -p faultdeck --test remote cli_replay_command_quotes` → 2 passed。
 - [ ] 审核发现：shell_quote 免引号快速路径允许以 `-` 开头的值（允许字符集含 `-`），token/host 以 `-` 开头时生成的 replay 命令 `--token -xxx` 会被 clap 当作旗标解析而无法复现（非注入，属边界正确性）（crates/cli/src/main.rs:136-141）
 - [ ] 审核发现：ensure_chain() 的 `-C` 探测在 dry_run 模式下经 run() 恒返回 Ok（短路），故 dry-run 不再发出 `-I` 跳转安装命令，与真实执行（及测试 recorder 路径）行为不一致，dry-run 命令序列失真（crates/agent/src/firewall.rs:46-53,91-108）
