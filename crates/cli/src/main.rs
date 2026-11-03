@@ -4,6 +4,7 @@ use std::str::FromStr;
 
 use clap::{Parser, Subcommand};
 use faultdeck_core::{FaultSpec, Injection, LatencySpec, LossSpec, Target};
+use faultdeck_report::{RunReport, Scenario};
 use ipnet::IpNet;
 use serde::{Deserialize, Serialize};
 
@@ -52,6 +53,12 @@ enum RemoteSub {
         milliseconds: Option<u64>,
         #[arg(long)]
         percent: Option<f64>,
+        #[arg(long)]
+        scenario_name: Option<String>,
+        #[arg(long)]
+        report_json: Option<String>,
+        #[arg(long)]
+        report_html: Option<String>,
     },
     Rollback {
         #[arg(long)]
@@ -124,6 +131,9 @@ fn main() -> anyhow::Result<()> {
                 port_spec,
                 milliseconds,
                 percent,
+                scenario_name,
+                report_json,
+                report_html,
             } => {
                 let target = match port_spec {
                     Some(p) => Target::destination_port(IpNet::from_str(&destination)?, p),
@@ -149,9 +159,32 @@ fn main() -> anyhow::Result<()> {
                     &host,
                     port,
                     token.as_deref(),
-                    &WireRequest::Inject(injection),
+                    &WireRequest::Inject(injection.clone()),
                 )?;
                 println!("{msg}");
+
+                if let Some(report_json) = report_json {
+                    let scenario = Scenario {
+                        name: scenario_name.clone().unwrap_or_else(|| "scenario".into()),
+                        injection: injection.clone(),
+                    };
+                    let mut report = RunReport::new(&scenario, faultdeck_report::now_ms());
+                    report.replay_command = format!(
+                        "faultdeck remote inject --fault {} --destination {} --host {} --port {}",
+                        match fault {
+                            FaultKind::Latency => "latency",
+                            FaultKind::Loss => "loss",
+                            FaultKind::Disconnect => "disconnect",
+                        },
+                        destination,
+                        host,
+                        port,
+                    );
+                    std::fs::write(&report_json, report.to_json()?)?;
+                    if let Some(html) = report_html {
+                        std::fs::write(&html, report.to_html())?;
+                    }
+                }
             }
             RemoteSub::Rollback { host, port, token } => {
                 let msg = send(&host, port, token.as_deref(), &WireRequest::Rollback)?;

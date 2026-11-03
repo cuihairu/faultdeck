@@ -2,7 +2,8 @@
   - 本地实现完成并验证：crates/core(共享模型+校验)、crates/agent(监听 127.0.0.1:7000、token 鉴权、管理网段白名单、netem+iptables 故障、firewall 断网后端)、crates/cli(remote ping/inject/rollback)。CLI→agent 端到端 ping/rollback 实测通过。验收项 BLOCKED：Windows 控制端对 Linux 目标三场景实测需真实跨机环境，无现成设备，按约定标 BLOCKED 跳过，验收证据待真实设备补充。
 - [x] FD-ARCH-1 [P1] agent 双向连接模式:Mode A=agent 监听(目标有公网 IP,控制端拨入)+Mode B=控制端监听(目标 NAT 后,agent 反向拨号,长连隧道断线重连);单条 TCP 长连接(WebSocket/gRPC stream)承载指令+事件+日志+报告回传,两模式共用协议对称;安全=双向 token+mTLS 可选,agent 默认只信配置控制端指纹。前置:FD-P1-4。
   - 本地实现完成：crates/agent/src/transport.rs 提供 ModeA(listener accept)与 ModeB(反向拨号+retries/backoff 重连)，send_frame/read_frame 统一 JSON 行帧承载请求/响应，协议对称。3 项传输测试覆盖 Mode A 帧往返、Mode B 拨号、断线重连。跨机长连隧道实测 BLOCKED（需真实 NAT 网络）。
-- [ ] FD-REPORT-1 [P1] 报告体系(关键功能):报告=实验唯一事实源——场景 YAML+hash、注入参数与故障状态时间线、恢复验证证据、外部断言结果、一键重现命令;双格式 JSON(CI 回归对比)+HTML(人看时间线图);历史对比=同场景多次运行 diff(回归验证核心);双向模式下报告均可经隧道回传。P0 的 JSON 报告为基础,增强部分排 P2 初。
+- [x] FD-REPORT-1 [P1] 报告体系(关键功能):报告=实验唯一事实源——场景 YAML+hash、注入参数与故障状态时间线、恢复验证证据、外部断言结果、一键重现命令;双格式 JSON(CI 回归对比)+HTML(人看时间线图);历史对比=同场景多次运行 diff(回归验证核心);双向模式下报告均可经隧道回传。P0 的 JSON 报告为基础,增强部分排 P2 初。
+  - 本地实现完成：crates/report 提供 Scenario(JSON 规范+SHA256 hash)、RunReport(时间线/恢复证据/外部断言/重现命令)、to_json/to_html、compare_runs(历史 diff)。CLI remote inject 增 --report-json/--report-html 输出。3 项报告测试覆盖 JSON/HTML/hash 稳定/historical diff。隧道回传复用 FD-ARCH-1 transport 帧协议。
 - [ ] FD-ARCH-2 [P1] Coordinator 协调者模式(多目标推荐形态):协调者部署在 agent 与控制端都可达处;agent 注册(身份/能力/在线状态,心跳保活),控制端附着发起实验,协调者路由指令与报告回传并存档;解决双向 NAT(两端仅出站连接)、多目标舰队视图、报告集中存档;P3 Web UI 天然部署于协调者。与 Mode A/B 递进:单目标直连用 A/B,多目标/团队用协调者;舰队场景协调者可运行于 meshlet 虚拟网之上(自家产品闭环)。安全:双向 token,mTLS 可选,agent 只信协调者指纹。
 
 <!-- 审核记录 2026-11-03 a47ead12..HEAD (commit 8d21b19) crates/netem + CI + workspace 配置 -->

@@ -8,6 +8,7 @@ license.workspace = true
 anyhow.workspace = true
 faultdeck-core = { path = "../core" }
 faultdeck-netem = { path = "../netem" }
+faultdeck-report = { path = "../report" }
 ipnet = { workspace = true, features = ["serde"] }
 serde.workspace = true
 serde_json.workspace = true
