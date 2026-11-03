@@ -34,7 +34,7 @@ enum RemoteSub {
         host: String,
         #[arg(long, default_value_t = 7000)]
         port: u16,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         token: Option<String>,
     },
     Inject {
@@ -42,7 +42,7 @@ enum RemoteSub {
         host: String,
         #[arg(long, default_value_t = 7000)]
         port: u16,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         token: Option<String>,
         #[arg(long, value_enum)]
         fault: FaultKind,
@@ -66,7 +66,7 @@ enum RemoteSub {
         host: String,
         #[arg(long, default_value_t = 7000)]
         port: u16,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         token: Option<String>,
     },
 }
@@ -204,7 +204,7 @@ fn main() -> anyhow::Result<()> {
                     };
                     let mut report = RunReport::new(&scenario, faultdeck_report::now_ms());
                     let mut replay = format!(
-                        "faultdeck remote inject --fault {} --destination {} --host {} --port {}",
+                        "faultdeck remote inject --fault {} --destination={} --host={} --port {}",
                         match fault {
                             FaultKind::Latency => "latency",
                             FaultKind::Loss => "loss",
@@ -215,7 +215,7 @@ fn main() -> anyhow::Result<()> {
                         port,
                     );
                     if let Some(token) = &token {
-                        replay.push_str(&format!(" --token {}", shell_quote(token)));
+                        replay.push_str(&format!(" --token={}", shell_quote(token)));
                     }
                     if let Some(ms) = milliseconds {
                         replay.push_str(&format!(" --milliseconds {ms}"));
@@ -227,7 +227,7 @@ fn main() -> anyhow::Result<()> {
                         replay.push_str(&format!(" --port-spec {port_spec}"));
                     }
                     if let Some(name) = &scenario_name {
-                        replay.push_str(&format!(" --scenario-name {}", shell_quote(name)));
+                        replay.push_str(&format!(" --scenario-name={}", shell_quote(name)));
                     }
                     report.replay_command = replay;
                     std::fs::write(&report_json, report.to_json()?)?;
