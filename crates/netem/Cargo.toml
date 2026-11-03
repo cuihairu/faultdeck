@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+faultdeck-core = { path = "../core" }
 ipnet = { workspace = true, features = ["serde"] }
 serde.workspace = true
 thiserror.workspace = true

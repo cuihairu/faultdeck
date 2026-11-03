@@ -1,69 +1,25 @@
 use std::fmt;
 use std::path::PathBuf;
 
+use faultdeck_core::{
+    validate_injection as core_validate, CoreError, FaultSpec as CoreFaultSpec,
+    Injection as CoreInjection, LatencySpec as CoreLatencySpec, LossSpec as CoreLossSpec,
+    Target as CoreTarget,
+};
 use ipnet::IpNet;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub use faultdeck_core::MAX_LATENCY_MS;
 pub const PILOT_QDISC_HANDLE: u32 = 100;
-pub const MAX_LATENCY_MS: u64 = 86_400_000; // 24h
 const DEFAULT_ROUTE_DESTINATION: &str = "00000000";
 const ROUTE_FLAG_UP: u32 = 0x0001;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LatencySpec {
-    pub milliseconds: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LossSpec {
-    pub percent: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum FaultSpec {
-    Latency(LatencySpec),
-    Loss(LossSpec),
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Target {
-    pub source: Option<IpNet>,
-    pub destination: Option<IpNet>,
-    pub destination_port: Option<u16>,
-}
-
-impl Target {
-    pub fn any() -> Self {
-        Self {
-            source: None,
-            destination: None,
-            destination_port: None,
-        }
-    }
-
-    pub fn destination(network: IpNet) -> Self {
-        Self {
-            source: None,
-            destination: Some(network),
-            destination_port: None,
-        }
-    }
-
-    pub fn destination_port(network: IpNet, port: u16) -> Self {
-        Self {
-            source: None,
-            destination: Some(network),
-            destination_port: Some(port),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Injection {
-    pub fault: FaultSpec,
-    pub target: Target,
-}
+// Re-export shared model types under netem namespace.
+pub type LatencySpec = CoreLatencySpec;
+pub type LossSpec = CoreLossSpec;
+pub type FaultSpec = CoreFaultSpec;
+pub type Target = CoreTarget;
+pub type Injection = CoreInjection;
 
 #[derive(Debug, Error)]
 pub enum AdapterError {
@@ -114,10 +70,6 @@ impl fmt::Display for TcCommand {
 
 pub trait CommandExecutor {
     fn run(&self, command: &TcCommand) -> Result<()>;
-
-    /// Capture command stdout for preflight inspection. The default treats the
-    /// command as producing no output (used by closures and tests); real system
-    /// execution overrides this.
     fn run_capture(&self, _command: &TcCommand) -> Result<String> {
         Ok(String::new())
     }
@@ -258,7 +210,6 @@ where
 
         for command in &commands {
             if let Err(error) = self.executor.run(command) {
-                // Best-effort cleanup: remove the pilot root qdisc we created.
                 let _ = self.rollback_cleanup();
                 return Err(error);
             }
@@ -421,13 +372,17 @@ where
         ];
 
         match &injection.fault {
-            FaultSpec::Latency(spec) => {
+            CoreFaultSpec::Latency(spec) => {
                 arguments.push("delay".into());
                 arguments.push(format!("{}ms", spec.milliseconds));
             }
-            FaultSpec::Loss(spec) => {
+            CoreFaultSpec::Loss(spec) => {
                 arguments.push("loss".into());
                 arguments.push(format_percent(spec.percent));
+            }
+            CoreFaultSpec::Disconnect(_) => {
+                // Disconnect is handled by iptables in the agent; netem has no
+                // equivalent. Reaching this path is a programming error.
             }
         }
         vec![self.command(arguments)]
@@ -469,34 +424,18 @@ where
 }
 
 fn validate(injection: &Injection) -> Result<()> {
-    if let FaultSpec::Loss(ref spec) = injection.fault {
-        if !(0.0..=100.0).contains(&spec.percent) || spec.percent == 0.0 {
-            return Err(AdapterError::InvalidLossPercent {
-                percent: spec.percent,
-            });
+    match core_validate(injection) {
+        Ok(()) => Ok(()),
+        Err(CoreError::EmptyTarget) => Err(AdapterError::EmptyTarget),
+        Err(CoreError::InvalidLossPercent { percent }) => {
+            Err(AdapterError::InvalidLossPercent { percent })
         }
-    }
-
-    if let FaultSpec::Latency(ref spec) = injection.fault {
-        if spec.milliseconds == 0 || spec.milliseconds > MAX_LATENCY_MS {
-            return Err(AdapterError::InvalidLatency {
-                milliseconds: spec.milliseconds,
-            });
+        Err(CoreError::InvalidLatency { milliseconds, .. }) => {
+            Err(AdapterError::InvalidLatency { milliseconds })
         }
+        Err(CoreError::UnsupportedIpv6) => Err(AdapterError::UnsupportedIpv6),
+        Err(CoreError::OverlapsManagement { .. }) => Err(AdapterError::EmptyTarget),
     }
-
-    let target = &injection.target;
-    let mut has_family = false;
-    for network in [target.source, target.destination].into_iter().flatten() {
-        has_family = true;
-        if let IpNet::V6(_) = network {
-            return Err(AdapterError::UnsupportedIpv6);
-        }
-    }
-    if !has_family {
-        return Err(AdapterError::EmptyTarget);
-    }
-    Ok(())
 }
 
 fn match_ip_arg(field: &str, network: IpNet) -> Result<Vec<String>> {
@@ -524,7 +463,6 @@ fn is_tc_not_found_message(message: &str) -> bool {
 
 fn parse_root_qdisc(output: &str) -> Option<(String, String)> {
     for line in output.lines() {
-        // Typical: "qdisc prio 100: root refcnt 2 ..."
         let mut tokens = line.split_whitespace();
         if tokens.next() != Some("qdisc") {
             continue;
@@ -550,7 +488,6 @@ fn default_device_from_routes(routes: &str) -> anyhow::Result<String> {
         if columns.len() < 8 {
             continue;
         }
-        // columns: Iface Destination Gateway Flags RefCnt Use Metric Mask ...
         if columns[1] != DEFAULT_ROUTE_DESTINATION {
             continue;
         }
@@ -577,21 +514,20 @@ fn default_device_from_routes(routes: &str) -> anyhow::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ipnet::IpNet;
     use std::str::FromStr;
 
     fn latency(ms: u64) -> Injection {
         Injection {
-            fault: FaultSpec::Latency(LatencySpec { milliseconds: ms }),
-            target: Target::destination_port(IpNet::from_str("192.0.2.0/24").unwrap(), 7000),
+            fault: CoreFaultSpec::Latency(CoreLatencySpec { milliseconds: ms }),
+            target: CoreTarget::destination_port(IpNet::from_str("192.0.2.0/24").unwrap(), 7000),
         }
     }
 
     #[test]
     fn rejects_mixed_family_target() {
         let mixed = Injection {
-            fault: FaultSpec::Loss(LossSpec { percent: 1.0 }),
-            target: Target {
+            fault: CoreFaultSpec::Loss(CoreLossSpec { percent: 1.0 }),
+            target: CoreTarget {
                 source: Some(IpNet::from_str("192.0.2.0/24").unwrap()),
                 destination: Some(IpNet::from_str("2001:db8::/32").unwrap()),
                 destination_port: None,

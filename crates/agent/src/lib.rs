@@ -1,0 +1,235 @@
+use std::collections::HashSet;
+use std::io::{BufRead, BufReader, Write};
+use std::net::{TcpListener, TcpStream};
+use std::sync::Arc;
+
+use faultdeck_core::{overlaps_management, Injection};
+use faultdeck_netem::NetemAdapter;
+use firewall::{is_disconnect, Iptables};
+use ipnet::IpNet;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+pub mod firewall;
+pub mod transport;
+pub const MAX_INJECTION_BYTES: usize = 64 * 1024;
+
+#[derive(Debug, Error)]
+pub enum AgentError {
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("json error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("invalid command {reason}")]
+    InvalidCommand { reason: String },
+    #[error("unauthorized: missing or invalid token")]
+    Unauthorized,
+    #[error("adapter error: {0}")]
+    Adapter(#[from] faultdeck_netem::AdapterError),
+}
+
+pub type Result<T> = std::result::Result<T, AgentError>;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentConfig {
+    pub bind: String,
+    pub token: Option<String>,
+    pub interface: String,
+    pub management_networks: Vec<IpNet>,
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self {
+            bind: "127.0.0.1:0".into(),
+            token: None,
+            interface: "eth0".into(),
+            management_networks: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "cmd", rename_all = "snake_case")]
+pub enum Request {
+    Ping,
+    Inject(Injection),
+    Rollback,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum Response {
+    Ok { message: String },
+    Error { message: String },
+}
+
+fn token_ok(config: &AgentConfig, request_token: Option<&str>) -> bool {
+    match &config.token {
+        None => true,
+        Some(expected) => request_token == Some(expected.as_str()),
+    }
+}
+
+pub fn authorize(config: &AgentConfig, token: Option<&str>) -> Result<()> {
+    if token_ok(config, token) {
+        Ok(())
+    } else {
+        Err(AgentError::Unauthorized)
+    }
+}
+
+/// Guard: reject injections whose target overlaps a management network.
+pub fn guard_management(config: &AgentConfig, injection: &Injection) -> Result<()> {
+    for network in injection.target.networks() {
+        if overlaps_management(network, &config.management_networks) {
+            return Err(AgentError::InvalidCommand {
+                reason: format!("target {network} overlaps management network"),
+            });
+        }
+    }
+    Ok(())
+}
+
+pub fn process_request<E>(
+    config: &AgentConfig,
+    adapter: &NetemAdapter<E>,
+    firewall: &Iptables,
+    request: Request,
+    applied: &mut HashSet<String>,
+) -> Response
+where
+    E: faultdeck_netem::CommandExecutor,
+{
+    match &request {
+        Request::Ping => Response::Ok {
+            message: "pong".into(),
+        },
+        Request::Inject(injection) => {
+            if let Err(e) = guard_management(config, injection) {
+                return Response::Error {
+                    message: e.to_string(),
+                };
+            }
+            if !applied.is_empty() {
+                return Response::Error {
+                    message: "another fault is already applied; rollback first".into(),
+                };
+            }
+            if is_disconnect(injection) {
+                match firewall.apply(injection) {
+                    Ok(_) => {
+                        applied.insert("firewall".into());
+                        Response::Ok {
+                            message: "fault applied".into(),
+                        }
+                    }
+                    Err(e) => Response::Error {
+                        message: e.to_string(),
+                    },
+                }
+            } else {
+                match adapter.inject(injection) {
+                    Ok(_) => {
+                        applied.insert("netem".into());
+                        Response::Ok {
+                            message: "fault applied".into(),
+                        }
+                    }
+                    Err(e) => Response::Error {
+                        message: e.to_string(),
+                    },
+                }
+            }
+        }
+        Request::Rollback => {
+            if applied.is_empty() {
+                return Response::Ok {
+                    message: "nothing to roll back".into(),
+                };
+            }
+            let kind = applied.iter().next().cloned().unwrap_or_default();
+            let result = if kind == "firewall" {
+                firewall.rollback().map_err(|e| e.to_string())
+            } else {
+                adapter.rollback().map(|_| ()).map_err(|e| e.to_string())
+            };
+            match result {
+                Ok(()) => {
+                    applied.clear();
+                    Response::Ok {
+                        message: "fault rolled back".into(),
+                    }
+                }
+                Err(e) => Response::Error { message: e },
+            }
+        }
+    }
+}
+
+pub fn handle_connection<E>(
+    config: &Arc<AgentConfig>,
+    adapter: &NetemAdapter<E>,
+    firewall: &Iptables,
+    applied: &mut HashSet<String>,
+    stream: TcpStream,
+) -> Result<()>
+where
+    E: faultdeck_netem::CommandExecutor,
+{
+    let mut reader = BufReader::new(stream.try_clone()?);
+    let mut writer = stream;
+    let mut first_line = String::new();
+    reader.read_line(&mut first_line)?;
+    let header = first_line.trim();
+    if header.is_empty() {
+        let _ = writer.write_all(b"{\"status\":\"error\",\"message\":\"missing token header\"}\n");
+        return Ok(());
+    }
+    let (maybe_token, payload) = match header.split_once(' ') {
+        Some((token, rest)) => (Some(token), rest),
+        None => (None, header),
+    };
+    if let Err(e) = authorize(config, maybe_token) {
+        let _ = writer.write_all(
+            format!(
+                "{{\"status\":\"error\",\"message\":{}}}\n",
+                serde_json::to_string(&e.to_string())?
+            )
+            .as_bytes(),
+        );
+        return Ok(());
+    }
+    if payload.len() > MAX_INJECTION_BYTES {
+        return Err(AgentError::InvalidCommand {
+            reason: "injection payload too large".into(),
+        });
+    }
+    let request: Request = serde_json::from_str(payload)?;
+    if let Request::Inject(ref injection) = request {
+        faultdeck_core::validate_injection(injection).map_err(|e| AgentError::InvalidCommand {
+            reason: e.to_string(),
+        })?;
+    }
+    let response = process_request(config, adapter, firewall, request, applied);
+    let _ = writer.write_all(format!("{}\n", serde_json::to_string(&response)?).as_bytes());
+    Ok(())
+}
+
+pub fn serve(config: AgentConfig, adapter: NetemAdapter, firewall: Iptables) -> Result<()> {
+    let config = Arc::new(config);
+    let listener = TcpListener::bind(&config.bind)?;
+    eprintln!("agent listening on {}", listener.local_addr()?);
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                let cfg = config.clone();
+                let adapter = adapter.clone();
+                let mut applied = HashSet::new();
+                let _ = handle_connection(&cfg, &adapter, &firewall, &mut applied, stream);
+            }
+            Err(e) => eprintln!("accept error: {e}"),
+        }
+    }
+    Ok(())
+}

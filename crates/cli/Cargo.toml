@@ -1,0 +1,19 @@
+[package]
+name = "faultdeck"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "faultdeck"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap = { workspace = true }
+faultdeck-agent = { path = "../agent" }
+faultdeck-core = { path = "../core" }
+faultdeck-netem = { path = "../netem" }
+ipnet = { workspace = true, features = ["serde"] }
+serde.workspace = true
+serde_json.workspace = true
