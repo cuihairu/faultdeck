@@ -106,4 +106,18 @@
 - [x] 全仓 rustfmt/clippy 告警归零。
   - commit d62e589 + 162e1f8
 
-- [ ] 审核发现：新增 favicon.svg 未在 VitePress 配置中通过 link 引用，浏览器不会自动加载该 SVG，文档站点因此不显示预期图标（docs/public/favicon.svg:1）
+- [x] 审核发现：新增 favicon.svg 未在 VitePress 配置中通过 link 引用，浏览器不会自动加载该 SVG，文档站点因此不显示预期图标（docs/public/favicon.svg:1）
+  - 修复：docs/.vitepress/config.mts:57 配置 head icon；pnpm docs:build 通过，dist/index.html:18 输出 `/faultdeck/favicon.svg`
+
+## 审核发现
+
+- [x] 审核发现：nightly 发布任务未声明 `contents: write`，在默认只读令牌的仓库中删除和创建 release 都会因权限不足失败（.github/workflows/nightly.yml:34）
+  - 修复：.github/workflows/nightly.yml:17-18 声明 job 级 `permissions: contents: write`
+- [x] 审核发现：手动从非默认分支发布时 `gh release create` 未指定 `--target`，新建 nightly 标签指向默认分支而非实际构建的 `github.sha`（.github/workflows/nightly.yml:42）
+  - 修复：.github/workflows/nightly.yml:46 `--target "$GITHUB_SHA"`
+- [x] 审核发现：英中远程协议文档将 register 和 fetch_report 请求拆成多行，但 coordinator 按换行分帧，照示例发送会将首行 `{` 当成完整请求并解析失败（docs/remote-agents.md:49）
+  - 修复：docs/remote-agents.md:49,58 与 docs/zh/remote-agents.md:45,54 改为单行请求示例；换行分帧依据 crates/agent/src/transport.rs:66
+- [x] 审核发现：英中 README 将自动恢复回滚标为已实现，但故障施加后会持续驻留且需要调用方显式 rollback，误导用户认为故障会自动解除（README.md:63）
+  - 修复：README.md:63 与 README.zh.md:64 改为 explicit rollback，并标注 automatic fault recovery 未实现；驻留依据 crates/netem/src/lib.rs:204
+- [x] 审核发现：英中 README 将 coordinator 多目标中枢标为已实现，但其 inject 仅返回 queued 而未向 agent 下发，无法实际执行多目标实验（README.md:66）
+  - 修复：README.md:66 与 README.zh.md:67 改为 coordinator registration only；queued/dispatch 依据 crates/coordinator/src/lib.rs:159-178

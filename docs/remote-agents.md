@@ -45,21 +45,8 @@ reuses the same newline-framed JSON transport. Every request is wrapped in a
 started with `--token`, the `token` field must match (compared in constant
 time) or the request is rejected with `Unauthorized`:
 
-```json
-{
-  "token": "<secret-or-null>",
-  "command": {
-    "cmd": "register",
-    "identity": {
-      "id": "game-01",
-      "capabilities": [
-        "netem",
-        "firewall"
-      ],
-      "last_seen_ms": 1730000000000
-    }
-  }
-}
+```text
+{"token":"<secret-or-null>","command":{"cmd":"register","identity":{"id":"game-01","capabilities":["netem","firewall"],"last_seen_ms":1730000000000}}}
 → {"status":"registered","id":"game-01"}
 
 {"token":"<secret-or-null>","command":{"cmd":"heartbeat","id":"game-01"}}
@@ -68,14 +55,7 @@ time) or the request is rejected with `Unauthorized`:
 {"token":"<secret-or-null>","command":{"cmd":"list_agents"}}
 → {"status":"agents","agents":[ …AgentIdentity… ]}
 
-{
-  "token": "<secret-or-null>",
-  "command": {
-    "cmd": "fetch_report",
-    "id": "game-01",
-    "scenario_hash": "<sha256>"
-  }
-}
+{"token":"<secret-or-null>","command":{"cmd":"fetch_report","id":"game-01","scenario_hash":"<sha256>"}}
 → {"status":"report","report":{ …RunReport… }}    // or error "report not found"
 
 {"token":"<secret-or-null>","command":{"cmd":"inject","id":"game-01","injection":{ … }}}

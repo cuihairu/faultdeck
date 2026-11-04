@@ -54,6 +54,7 @@ export default defineConfig({
   base: '/faultdeck/',
   title: 'FaultDeck',
   description: 'Game-dev-oriented fault simulation & testing tool',
+  head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/faultdeck/favicon.svg' }]],
   themeConfig: {
     nav: [
       { text: 'English', link: '/' },

@@ -14,6 +14,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -40,5 +42,6 @@ jobs:
           stamp=$(date -u +%Y%m%d)
           gh release delete "$tag" --yes --cleanup-tag || true
           gh release create "$tag" dist/* \
+            --target "$GITHUB_SHA" \
             --title "nightly $stamp" \
             --notes "Rolling nightly build of ${{ github.sha }} (linux-x86_64, built with stable rust)."
