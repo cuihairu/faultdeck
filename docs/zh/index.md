@@ -19,16 +19,16 @@ hero:
 features:
   - icon: 🎮
     title: 为游戏开发测试而生
-    details: 场景优先——进房断网、战斗丢包、跨服隔离。游戏场景模板是一等公民。
+    details: 场景现在就能复现——`--scenario-name` 命名,报告哈希固定。进房断网、战斗丢包等预置游戏模板在 P2 路线图。
   - icon: 🧪
     title: 故障 DSL,后端定实现
-    details: 实验 YAML 描述故障语义;Toxiproxy / tc netem / WinDivert 决定实现方式。不支持就报「不支持」,绝不静默近似。
+    details: 故障规格(延迟/丢包/断连)先校验再下发;后端不支持就答「不支持」,绝不静默近似。YAML DSL 与 Toxiproxy / WinDivert 后端在计划中。
   - icon: 🔁
-    title: 可靠撤销
-    details: 看门狗 + 租约 + 强制回滚——进程被杀故障也一定被撤销。MVP 硬性验收条件。
+    title: 回滚可信赖
+    details: 回滚幂等——容忍 tc「找不到」类错误,绝不碰非 FaultDeck 的根 qdisc;遗留的自家 qdisc 下次注入前自动清理。进程被杀也保证回滚(看门狗+租约)在计划中(FD-P0-4)。
   - icon: 📄
     title: 可复现的报告
-    details: JSON 报告含注入参数、时间线与恢复验证结果。同一 YAML,一致结果。
+    details: JSON 报告含注入参数、时间线、恢复验证结果与稳定的场景哈希,可用于历史对比。
 ---
 
 <div style="text-align:center;margin-top:2rem">

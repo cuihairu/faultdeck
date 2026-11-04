@@ -19,16 +19,16 @@ hero:
 features:
   - icon: 🎮
     title: Built for Game Dev Testing
-    details: Scenarios first — disconnect-on-join, combat packet loss, cross-server partition. Game templates are first-class citizens.
+    details: Scenarios are reproducible today via `--scenario-name` and a stable report hash. Prebuilt game templates (disconnect-on-join, combat packet loss) are on the P2 roadmap.
   - icon: 🧪
     title: Fault DSL, Backend Decides
-    details: Experiment YAML describes fault semantics; Toxiproxy / tc netem / WinDivert decide implementation. "Unsupported" beats silent approximation.
+    details: Fault specs (latency / loss / disconnect) validate before any command runs; the backend answers "unsupported" rather than approximating. The YAML DSL and the Toxiproxy / WinDivert backends are planned.
   - icon: 🔁
-    title: Reliable Rollback
-    details: Watchdog + lease + forced rollback — faults are undone even if the process is killed. The MVP hard acceptance gate.
+    title: Rollback You Can Trust
+    details: Rollback is idempotent — tc "not found" errors are tolerated and foreign root qdiscs are never touched; a leftover FaultDeck qdisc is cleaned up on the next apply. Kill-safe forced rollback (watchdog + lease) is planned (FD-P0-4).
   - icon: 📄
     title: Reproducible Reports
-    details: JSON reports with injection parameters, timeline and recovery verification. Same YAML, consistent results.
+    details: JSON reports with injection parameters, timeline, recovery verification and a stable scenario hash for history diff.
 ---
 
 <div style="text-align:center;margin-top:2rem">

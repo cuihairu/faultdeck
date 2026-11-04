@@ -17,12 +17,13 @@ cd faultdeck
 cargo build --release
 ```
 
-This produces two binaries:
+This produces three binaries:
 
 | binary | role |
 |---|---|
 | `faultdeck-agent` | resident daemon on the target host; applies faults |
 | `faultdeck` | CLI you run locally; talks to the agent over TCP |
+| `faultdeck-coordinator` | optional multi-target hub; agent registry and report archive |
 
 ## 2. Start an agent
 
@@ -69,7 +70,7 @@ Flags (all optional except shown defaults):
 
 Rules to know before your first run:
 
-- **One fault at a time per agent connection lifecycle.** A second `inject` is rejected with `another fault is already applied; rollback first`.
+- **One fault at a time per agent.** Applied state survives across connections (a rollback on any connection clears it); a second `inject` is rejected with `another fault is already applied; rollback first`. State is not tracked across agent restarts.
 - The agent refuses to overwrite a **foreign root qdisc** on the interface (anything other than FaultDeck's own `100:` handle).
 - Targets are **IPv4 CIDRs only**; IPv6 targets are rejected.
 

@@ -21,7 +21,7 @@ sudo faultdeck-agent \
 | `--management` | empty | repeatable protected CIDR; overlaps are rejected |
 | `--iptables` | none | path to the iptables binary; **required for `disconnect`** |
 
-Startup warning: if no `--management` networks are configured, the agent prints `warning: no management networks configured; agent may fault management traffic`. Always configure them on hosts you care about — this is the guard that keeps SSH/ZeroTier-style control traffic safe.
+Startup warning: if no `--management` networks are configured, the agent prints `warning: no management networks configured; agent may fault management traffic`. Binding a non-loopback address without `--token` also warns: `warning: binding <addr> without a token; any reachable host can control the agent`. Always configure management networks and a token on hosts you care about.
 
 The default interface can also be discovered programmatically via `faultdeck_netem::default_device()` (lowest-metric UP default route from `/proc/net/route`).
 
@@ -46,7 +46,20 @@ started with `--token`, the `token` field must match (compared in constant
 time) or the request is rejected with `Unauthorized`:
 
 ```json
-{"token":"<secret-or-null>","command":{"cmd":"register","identity":{"id":"game-01","capabilities":["netem","firewall"],"last_seen_ms":1730000000000}}}
+{
+  "token": "<secret-or-null>",
+  "command": {
+    "cmd": "register",
+    "identity": {
+      "id": "game-01",
+      "capabilities": [
+        "netem",
+        "firewall"
+      ],
+      "last_seen_ms": 1730000000000
+    }
+  }
+}
 → {"status":"registered","id":"game-01"}
 
 {"token":"<secret-or-null>","command":{"cmd":"heartbeat","id":"game-01"}}
@@ -55,7 +68,14 @@ time) or the request is rejected with `Unauthorized`:
 {"token":"<secret-or-null>","command":{"cmd":"list_agents"}}
 → {"status":"agents","agents":[ …AgentIdentity… ]}
 
-{"token":"<secret-or-null>","command":{"cmd":"fetch_report","id":"game-01","scenario_hash":"<sha256>"}}
+{
+  "token": "<secret-or-null>",
+  "command": {
+    "cmd": "fetch_report",
+    "id": "game-01",
+    "scenario_hash": "<sha256>"
+  }
+}
 → {"status":"report","report":{ …RunReport… }}    // or error "report not found"
 
 {"token":"<secret-or-null>","command":{"cmd":"inject","id":"game-01","injection":{ … }}}

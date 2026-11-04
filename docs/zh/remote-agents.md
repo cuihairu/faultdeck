@@ -21,7 +21,7 @@ sudo faultdeck-agent \
 | `--management` | 空 | 可重复的保护网段;重叠即拒绝 |
 | `--iptables` | 无 | iptables 二进制路径;**`disconnect` 必需** |
 
-启动警告:未配置任何 `--management` 网段时,agent 会打印 `warning: no management networks configured; agent may fault management traffic`。在重要的主机上务必配置 —— 这是保护 SSH/ZeroTier 等控制流量的守卫。
+启动警告:未配置任何 `--management` 网段时,agent 会打印 `warning: no management networks configured; agent may fault management traffic`;绑定非回环地址且未配置 `--token` 时也会告警:`warning: binding <addr> without a token; any reachable host can control the agent`。重要主机务必配置管理网段与 token。
 
 默认网卡也可通过库 API `faultdeck_netem::default_device()` 发现(取 `/proc/net/route` 中 metric 最低的 UP 默认路由)。
 
@@ -42,7 +42,20 @@ sudo faultdeck-agent \
 coordinator(默认端口 `7001`)维护 agent 注册表,协议复用同一套换行分帧 JSON 传输。每个请求都包裹在 `WireMessage` 信封 `{"token":…,"command":…}` 中;coordinator 以 `--token` 启动时,`token` 字段必须匹配(常量时间比较),否则以 `Unauthorized` 拒绝:
 
 ```json
-{"token":"<secret-or-null>","command":{"cmd":"register","identity":{"id":"game-01","capabilities":["netem","firewall"],"last_seen_ms":1730000000000}}}
+{
+  "token": "<secret-or-null>",
+  "command": {
+    "cmd": "register",
+    "identity": {
+      "id": "game-01",
+      "capabilities": [
+        "netem",
+        "firewall"
+      ],
+      "last_seen_ms": 1730000000000
+    }
+  }
+}
 → {"status":"registered","id":"game-01"}
 
 {"token":"<secret-or-null>","command":{"cmd":"heartbeat","id":"game-01"}}
@@ -51,7 +64,14 @@ coordinator(默认端口 `7001`)维护 agent 注册表,协议复用同一套换�
 {"token":"<secret-or-null>","command":{"cmd":"list_agents"}}
 → {"status":"agents","agents":[ …AgentIdentity… ]}
 
-{"token":"<secret-or-null>","command":{"cmd":"fetch_report","id":"game-01","scenario_hash":"<sha256>"}}
+{
+  "token": "<secret-or-null>",
+  "command": {
+    "cmd": "fetch_report",
+    "id": "game-01",
+    "scenario_hash": "<sha256>"
+  }
+}
 → {"status":"report","report":{ …RunReport… }}    // 或 "report not found"
 
 {"token":"<secret-or-null>","command":{"cmd":"inject","id":"game-01","injection":{ … }}}

@@ -12,7 +12,7 @@
 
 **定位:为游戏开发测试服务。** 模拟玩家弱网、断线重连、战斗中掉线、跨服网络隔离等游戏开发中真实会遇到的网络故障,自动注入、自动验证服务端能否正确恢复,生成可复现的测试报告——目的是让故障测试可重复、可自动化,替代人肉拔网线。
 
-故障类型:延迟、丢包、断线、黑洞、带宽限制;场景按游戏开发常见问题预置(进入房间后断网重连、战斗结算丢包重试、双服脑裂、Redis/DB 超时阻塞游戏逻辑等)。不绑定 KBEngine 或单一游戏服务器,但游戏场景模板是第一公民。
+已实现的故障类型:延迟、丢包、断连(iptables)。黑洞与带宽限制在计划中。故障目前通过 CLI 按目标逐条下发;进房断网重连、战斗结算丢包重试、双服脑裂、Redis/DB 超时阻塞游戏逻辑等预置游戏场景模板在 P2 路线图。不绑定 KBEngine 或单一游戏服务器。
 
 ## 核心理念
 
@@ -29,8 +29,9 @@ faultdeck CLI(→ 可选 Web UI)
        Scenario Planner / Target Resolver / Safety Guard
        Lifecycle+Rollback / Metrics / Report
        └ Fault Backend Adapters
-            ├ Toxiproxy(TCP,三平台)   ├ tc/netem(Linux)
-            ├ WinDivert(Windows,P2)    └ Chaos Mesh(K8s,可选)
+            ├ tc/netem(Linux,已实现)      ├ iptables 断连(已实现)
+            ├ Toxiproxy(TCP,计划中)      ├ WinDivert(Windows,计划中)
+            └ Chaos Mesh(K8s,可选)
 ```
 
 
@@ -60,19 +61,19 @@ agent 主动出站反向拨号,长连隧道(断线自动重连),指令与报告�
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| P0 | Rust CLI + Toxiproxy Adapter + 实验 YAML + 延迟/断线/黑洞/带宽 + 自动恢复 + JSON 报告(测试导向:游戏断线重连场景首发) | 未开始 |
+| P0 | Rust CLI + Toxiproxy Adapter + 实验 YAML + 延迟/断线/黑洞/带宽 + 自动恢复 + JSON 报告(测试导向:游戏断线重连场景首发) | 部分落地——CLI、延迟/丢包/断连、自动恢复回滚与 JSON 报告已实现;Toxiproxy Adapter、实验 YAML、黑洞/带宽待做 |
 | P1 | tc/netem Adapter、TCP/UDP、流量选择、突发丢包、乱序、netns 隔离 | 部分落地——tc/netem Adapter 与流量选择(源/目的/端口)已实现(`crates/netem`);突发丢包、乱序、netns 隔离待做 |
 | P2 | 游戏弱网/战斗断线/跨服隔离模板,集成 Wingman API、外部断言与报告 | 待 P1 |
-| P3 | WinDivert、可选 Web UI、多目标、远程 Agent、CI 集成 | 待 P2 |
+| P3 | WinDivert、可选 Web UI、多目标、远程 Agent、CI 集成 | 部分落地——远程 Agent(`crates/agent`)、Coordinator 多目标中枢(`crates/coordinator`)与 CI 构建/测试(`.github/workflows/rust.yml`)已实现;WinDivert 与 Web UI 待做 |
 
-## 仓库结构(目标)
+## 仓库结构
 
 ```
-crates/ faultdeck-core · scenario · backend · toxiproxy · netem
-        safety · report · cli
-examples/ tcp-reconnect.yaml · udp-loss.yaml · network-partition.yaml
-tests/   integration/ · recovery/
+crates/ core · netem · agent · cli · report · coordinator(protocol/ 为空占位)
+docs/   vitepress 站点(https://cuihairu.github.io/faultdeck/)
 ```
+
+计划中:toxiproxy adapter crate、场景 YAML DSL、`examples/`、根级集成测试。
 
 ## 文档
 

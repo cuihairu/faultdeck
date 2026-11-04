@@ -56,7 +56,7 @@ tc filter add dev IFACE protocol ip parent 100: prio 2 u32 match u32 0 0 flowid 
 
 ## Disconnect
 
-`Disconnect` has no netem equivalent, so the agent routes it to the firewall module: an `iptables` chain `FAULTDECK` in table **mangle**, jumped from `INPUT`, with one `-d ADDR/PREFIX -j DROP` rule per target network. Rollback flushes (`-F`) and deletes (`-X`) the chain. The `--iptables` flag must point at the binary, otherwise the agent returns `iptables missing`.
+`Disconnect` has no netem equivalent, so the agent routes it to the firewall module: an `iptables` chain `FAULTDECK` in table **mangle**, jumped from `INPUT`. Each target network gets a DROP rule — destination networks match with `-d`, a source network (via the library API) with `-s`. When a destination port is set, port-level disconnect drops both TCP and UDP on that port (`-p tcp --dport P` and `-p udp --dport P`); otherwise all traffic to the target is dropped. A partial install failure tears the chain down before returning the error. Rollback removes the INPUT jump, then flushes (`-F`) and deletes (`-X`) the chain — idempotent when the chain is already gone. The `--iptables` flag must point at the binary, otherwise the agent returns `iptables missing`.
 
 ## Rollback
 

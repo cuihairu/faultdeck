@@ -50,4 +50,7 @@ wire message must carry the matching token (see `remote-agents.md`). State
 | `--report-json` | `inject` | none | write JSON report locally |
 | `--report-html` | `inject` | none | write HTML report locally |
 
-There are no environment variables, no config file lookup, and no daemon options beyond the flags above.
+One environment variable exists: `FAULTDECK_TIMEOUT_SECS` overrides the CLI's
+5-second default read/write timeout on agent connections
+(`crates/cli/src/main.rs`). There is no config file lookup, and the agent and
+coordinator have no options beyond the flags above.

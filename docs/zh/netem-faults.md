@@ -56,7 +56,7 @@ tc filter add dev IFACE protocol ip parent 100: prio 2 u32 match u32 0 0 flowid 
 
 ## Disconnect
 
-`Disconnect` 没有 netem 等价物,因此 agent 将其交给防火墙模块:在 **mangle** 表创建 `FAULTDECK` 链并从 `INPUT` 跳转,对每个目标网段追加一条 `-d ADDR/PREFIX -j DROP` 规则。回滚时对链执行 flush(`-F`)与删除(`-X`)。`--iptables` 必须指向 iptables 二进制,否则 agent 返回 `iptables missing`。
+`Disconnect` 没有 netem 等价物,因此 agent 将其交给防火墙模块:在 **mangle** 表创建 `FAULTDECK` 链并从 `INPUT` 跳转。每个目标网段追加一条 DROP 规则——目的网段用 `-d` 匹配,源网段(库 API)用 `-s`。指定目的端口时,端口级断连同时丢弃该端口的 TCP 与 UDP(`-p tcp --dport P` 与 `-p udp --dport P`);否则丢弃目标全部流量。部分安装失败时先拆除整条链再返回错误。回滚先移除 INPUT 跳转,再对链执行 flush(`-F`)与删除(`-X`)——链已不存在时同样幂等。`--iptables` 必须指向 iptables 二进制,否则 agent 返回 `iptables missing`。
 
 ## 回滚
 

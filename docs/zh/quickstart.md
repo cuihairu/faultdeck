@@ -17,12 +17,13 @@ cd faultdeck
 cargo build --release
 ```
 
-产出两个二进制:
+产出三个二进制:
 
 | 二进制 | 角色 |
 |---|---|
 | `faultdeck-agent` | 目标主机上的常驻守护进程,负责实际施加故障 |
 | `faultdeck` | 本地 CLI,通过 TCP 与 agent 通信 |
+| `faultdeck-coordinator` | 可选的多目标中枢;维护 agent 注册表与报告归档 |
 
 ## 2. 启动 agent
 
@@ -69,7 +70,7 @@ sudo ./target/release/faultdeck-agent \
 
 第一次运行前必须知道的规则:
 
-- **同一时刻只能有一个已生效故障。** 第二次 `inject` 会被拒绝:`another fault is already applied; rollback first`。
+- **同一时刻一个 agent 只有一个已生效故障。** 生效状态跨连接共享(任一连接的 rollback 都能清除);第二次 `inject` 会被拒绝:`another fault is already applied; rollback first`。agent 重启后不保留该状态。
 - agent 拒绝覆盖网卡上**非 FaultDeck 的根 qdisc**(根句柄不是自己的 `100:`)。
 - 目标只支持 **IPv4 CIDR**;IPv6 目标会被拒绝。
 

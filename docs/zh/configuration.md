@@ -48,4 +48,4 @@ faultdeck-coordinator --bind 127.0.0.1:7001 [--token <shared-secret>]
 | `--report-json` | `inject` | 无 | 本地写 JSON 报告 |
 | `--report-html` | `inject` | 无 | 本地写 HTML 报告 |
 
-没有环境变量、没有配置文件查找,守护进程也没有上述参数之外的选项。
+唯一的环境变量是 `FAULTDECK_TIMEOUT_SECS`,覆盖 CLI 对 agent 连接默认 5 秒的读写超时(`crates/cli/src/main.rs`)。没有配置文件查找;agent 与 coordinator 也没有上述参数之外的选项。

@@ -11,7 +11,7 @@ English · [中文文档](README.zh.md)
 
 **FaultDeck serves game development testing.** It simulates real-world game network faults — player weak networks, disconnect/reconnect, mid-combat drops, cross-server partition — injects them automatically, verifies that the server recovers correctly, and produces reproducible test reports. The goal: repeatable, automated fault testing instead of manually pulling network cables.
 
-Fault types: latency, packet loss, disconnect, blackhole, bandwidth throttle. Scenarios are prebuilt around common game development problems (disconnect-on-room-join and reconnect, combat settlement packet-loss retry, dual-server brain split, Redis/DB timeouts blocking game logic). Not bound to KBEngine or any single game server — but game scenario templates are first-class citizens.
+Shipped fault types: latency, packet loss, disconnect (iptables). Blackhole and bandwidth throttle are planned. Faults are composed per target with the CLI today; prebuilt game scenario templates (disconnect-on-room-join and reconnect, combat settlement packet-loss retry, dual-server brain split, Redis/DB timeouts blocking game logic) are on the P2 roadmap. Not bound to KBEngine or any single game server.
 
 ## Core Principles
 
@@ -28,8 +28,9 @@ faultdeck CLI (→ optional Web UI)
        Scenario Planner / Target Resolver / Safety Guard
        Lifecycle+Rollback / Metrics / Report
        └ Fault Backend Adapters
-            ├ Toxiproxy (TCP, 3 platforms)   ├ tc/netem (Linux)
-            ├ WinDivert (Windows, P2)        └ Chaos Mesh (K8s, optional)
+            ├ tc/netem (Linux, live)         ├ iptables disconnect (live)
+            ├ Toxiproxy (TCP, planned)       ├ WinDivert (Windows, planned)
+            └ Chaos Mesh (K8s, optional)
 ```
 
 
@@ -59,19 +60,19 @@ The coordinator sits where both sides can reach; agents register with heartbeats
 
 | Phase | Scope | Status |
 |---|---|---|
-| P0 | Rust CLI + Toxiproxy adapter + experiment YAML + latency/disconnect/blackhole/bandwidth + auto recovery + JSON report (test-driven: game disconnect-reconnect scenario ships first) | Not started |
+| P0 | Rust CLI + Toxiproxy adapter + experiment YAML + latency/disconnect/blackhole/bandwidth + auto recovery + JSON report (test-driven: game disconnect-reconnect scenario ships first) | Partially shipped — CLI, latency/loss/disconnect, auto-recovery rollback and JSON report live; Toxiproxy adapter, experiment YAML, blackhole/bandwidth pending |
 | P1 | tc/netem adapter, TCP/UDP, traffic selection, burst loss, reordering, netns isolation | Partially shipped — tc/netem adapter + traffic selection (src/dst/port) live in `crates/netem`; burst loss, reordering, netns isolation pending |
 | P2 | Game weak-network / combat-disconnect / cross-server-partition templates, Wingman API integration, external assertions & reports | Planned |
-| P3 | WinDivert, optional Web UI, multi-target, remote agent, CI integration | Planned |
+| P3 | WinDivert, optional Web UI, multi-target, remote agent, CI integration | Partially shipped — remote agent (`crates/agent`), coordinator multi-target hub (`crates/coordinator`) and CI build/test (`.github/workflows/rust.yml`) live; WinDivert and Web UI pending |
 
-## Repository Layout (target)
+## Repository Layout
 
 ```
-crates/ faultdeck-core · scenario · backend · toxiproxy · netem
-        safety · report · cli
-examples/ tcp-reconnect.yaml · lost-packet-retry.yaml · network-partition.yaml
-tests/   integration/ · recovery/
+crates/ core · netem · agent · cli · report · coordinator (protocol/ is an empty placeholder)
+docs/   vitepress site (https://cuihairu.github.io/faultdeck/)
 ```
+
+Planned: toxiproxy adapter crate, scenario YAML DSL, `examples/`, root-level integration tests.
 
 ## Docs
 
