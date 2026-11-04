@@ -105,3 +105,12 @@
   - 属实并已修复：长度差异改为遍历 `u64::to_le_bytes()` 的全部 8 字节后 OR 折叠，高位字节不再丢失；新增 16MiB 全零/空串及 16MiB/1 字节负例。证据：`crates/agent/src/lib.rs:43-58`、`crates/agent/tests/agent.rs:238-260`；`cargo test -p faultdeck-agent --test agent constant_time_eq` → 2 passed。
 - [x] 审核发现：firewall.apply() 端口断连现分两次 run() 安装 tcp 与 udp 两条 DROP 规则——若第二条（udp）失败而第一条已装，错误路径不调 rollback 也不标记 applied，留下孤立 tcp DROP 规则且客户端误以为未注入（crates/agent/src/firewall.rs:146-160）
   - 属实并已修复：任一规则安装失败时先尽力执行 rollback 清空/删除 FAULTDECK 链，再返回原始错误，避免 tcp 已装而调用方视为未注入留下孤规则。证据：`crates/agent/src/firewall.rs:154-167`、`crates/agent/tests/firewall.rs:261-312`；`cargo test -p faultdeck-agent --test firewall` → 11 passed。
+
+- 不属实：constant_time_eq 现以服务端固定值 `b.len()` 为循环上界，攻击者仅控制 `a` 无法改变迭代次数，执行时长与攻击者输入无关（无差分侧信道）；绝对时长与固定服务端常量相关并非可利用漏洞，且值级比较已为恒定时间，此为标准常量时间实践，无需修复。
+
+- [x] 审核发现：apply() 的 `TargetNotV4` 早退路径不调 rollback——target 为 source=V4 + destination=V6 混合时，V4 规则已装入后遇 V6 返回 Err 而留下孤规则，与本次"部分安装失败即回滚"的意图不一致；经 validate_injection 的服务器路径先拒 V6 故当前不可达，但 apply()/process_request 为 pub，直接调用方可触发（crates/agent/src/firewall.rs:125-127）
+  - 属实并已修复：apply() 在触碰 iptables 前先预检全部 network 均为 IPv4，混合地址族直接返回 TargetNotV4 且不产生任何命令（含 ensure_chain），杜绝 V4 规则已装而留孤规则。commit 见本行下方测试证据 `crates/agent/src/firewall.rs:119-125`（预检）、`crates/agent/tests/firewall.rs:297-326`（apply_rejects_mixed_family_before_installing_any_rule 断言零调用）；`cargo test -p faultdeck-agent --test firewall apply_rejects_mixed_family_before_installing_any_rule` → 1 passed。
+- [x] 审核发现：apply() 部分安装失败时的回滚错误被 `let _ = self.rollback()` 静默丢弃且无任何日志——若 -D/-F/-X 本身失败，客户端被告知"未注入"而 iptables 仍残留 DROP 规则，运维无任何排查线索（crates/agent/src/firewall.rs:167）
+  - 属实并已修复：回滚失败改经 eprintln 输出明确告警（"firewall rollback after partial install failed: …"），不再静默；原始注入错误仍返回给调用方。commit 见本行下方测试证据 `crates/agent/src/firewall.rs:163-171`（eprintln 回滚失败）；`cargo test -p faultdeck-agent --test firewall` → 12 passed。
+- [x] 审核发现：apply_rolls_back_partial_install_on_failure 未断言回滚第一步 `-D INPUT -j FAULTDECK`（跳转移除）被发出，仅断言 -F/-X；mock 对 -D/-F/-X 恒返回 Ok，故"跳转移除被省略"的实现回归能通过本测试，却会在真实 iptables 因 `-X` 报 "Too many links" 而留下悬挂跳转（crates/agent/tests/firewall.rs:289-294）
+  - 属实并已补齐：测试新增断言回滚序列先发出 `-D INPUT -j FAULTDECK`（跳转移除），再 -F/-X，确保 -X 不会因链仍被引用报 "Too many links"。commit 见本行下方测试证据 `crates/agent/tests/firewall.rs:288-296`（新增 -D 断言）；`cargo test -p faultdeck-agent --test firewall apply_rolls_back_partial_install_on_failure` → 1 passed。

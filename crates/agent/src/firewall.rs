@@ -115,16 +115,22 @@ impl Iptables {
     }
 
     pub fn apply(&self, injection: &Injection) -> Result<()> {
-        self.ensure_chain()?;
         let target = &injection.target;
+        // Pre-validate every network is IPv4 before touching iptables. The
+        // server path rejects IPv6 up front, but apply()/process_request are
+        // public and a mixed-family target (source V4 + destination V6) would
+        // otherwise install the V4 rule and then bail on TargetNotV4, leaving
+        // an orphaned DROP rule behind for a caller told nothing was applied.
+        if target.networks().any(|network| !matches!(network, IpNet::V4(_))) {
+            return Err(FirewallError::TargetNotV4);
+        }
+        self.ensure_chain()?;
         let all_traffic = match &injection.fault {
             FaultSpec::Disconnect(spec) => spec.all_traffic,
             _ => true,
         };
         for network in target.networks() {
-            let IpNet::V4(net) = network else {
-                return Err(FirewallError::TargetNotV4);
-            };
+            let IpNet::V4(net) = network else { unreachable!() };
             let addr = net.addr();
             let prefix = net.prefix_len();
             let mut args: Vec<String> =
@@ -162,9 +168,12 @@ impl Iptables {
                     // rule failed) would leave an orphaned DROP rule while the
                     // caller believes nothing was applied. Tear the whole chain
                     // down so iptables state matches the error the client sees;
-                    // rollback errors are best-effort (the original failure is
-                    // what the caller should act on).
-                    let _ = self.rollback();
+                    // rollback errors are best-effort, but if the teardown
+                    // itself fails the iptables state is still dirty and the
+                    // operator needs a clue beyond the original failure.
+                    if let Err(rb) = self.rollback() {
+                        eprintln!("firewall rollback after partial install failed: {rb}");
+                    }
                     return Err(e);
                 }
             }

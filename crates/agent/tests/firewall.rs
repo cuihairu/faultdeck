@@ -290,6 +290,40 @@ fn apply_rolls_back_partial_install_on_failure() {
         .iter()
         .any(|c| c.contains("-p tcp") && c.contains("-j DROP")));
     // ...and the partial install was rolled back via the chain teardown.
+    // The INPUT -> FAULTDECK jump must be removed first; otherwise -X fails
+    // with "Too many links" because the chain is still referenced, leaving a
+    // dangling jump in the real firewall.
+    assert!(calls
+        .iter()
+        .any(|c| c.starts_with("-D INPUT -j FAULTDECK")));
     assert!(calls.iter().any(|c| c.starts_with("-F FAULTDECK")));
     assert!(calls.iter().any(|c| c.starts_with("-X FAULTDECK")));
+}
+
+#[test]
+fn apply_rejects_mixed_family_before_installing_any_rule() {
+    use faultdeck_core::{DisconnectSpec, FaultSpec, Injection, Target};
+    use ipnet::IpNet;
+    use std::str::FromStr;
+
+    // A source V4 + destination V6 target must be rejected before any -A rule
+    // is installed: the old path installed the V4 rule and then bailed on
+    // TargetNotV4, leaving an orphaned DROP rule the caller never knew about.
+    let (fw, calls) = recorder();
+    let injection = Injection {
+        fault: FaultSpec::Disconnect(DisconnectSpec { all_traffic: true }),
+        target: Target {
+            source: Some(IpNet::from_str("10.0.0.0/8").unwrap()),
+            destination: Some(IpNet::from_str("2001:db8::/32").unwrap()),
+            destination_port: None,
+        },
+    };
+    assert!(matches!(
+        fw.apply(&injection),
+        Err(FirewallError::TargetNotV4)
+    ));
+    let calls = calls.lock().unwrap().clone();
+    // The target must be rejected before any iptables call: no chain creation,
+    // no jump install, and no DROP rule may be attempted at all.
+    assert!(calls.is_empty());
 }
