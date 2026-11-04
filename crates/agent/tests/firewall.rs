@@ -293,11 +293,19 @@ fn apply_rolls_back_partial_install_on_failure() {
     // The INPUT -> FAULTDECK jump must be removed first; otherwise -X fails
     // with "Too many links" because the chain is still referenced, leaving a
     // dangling jump in the real firewall.
-    assert!(calls
+    let jump_removal = calls
         .iter()
-        .any(|c| c.starts_with("-D INPUT -j FAULTDECK")));
-    assert!(calls.iter().any(|c| c.starts_with("-F FAULTDECK")));
-    assert!(calls.iter().any(|c| c.starts_with("-X FAULTDECK")));
+        .position(|c| c.starts_with("-D INPUT -j FAULTDECK"))
+        .expect("jump removal");
+    let chain_flush = calls
+        .iter()
+        .position(|c| c.starts_with("-F FAULTDECK"))
+        .expect("chain flush");
+    let chain_delete = calls
+        .iter()
+        .position(|c| c.starts_with("-X FAULTDECK"))
+        .expect("chain delete");
+    assert!(jump_removal < chain_flush && chain_flush < chain_delete);
 }
 
 #[test]

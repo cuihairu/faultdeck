@@ -121,7 +121,10 @@ impl Iptables {
         // public and a mixed-family target (source V4 + destination V6) would
         // otherwise install the V4 rule and then bail on TargetNotV4, leaving
         // an orphaned DROP rule behind for a caller told nothing was applied.
-        if target.networks().any(|network| !matches!(network, IpNet::V4(_))) {
+        if target
+            .networks()
+            .any(|network| !matches!(network, IpNet::V4(_)))
+        {
             return Err(FirewallError::TargetNotV4);
         }
         self.ensure_chain()?;
@@ -130,7 +133,9 @@ impl Iptables {
             _ => true,
         };
         for network in target.networks() {
-            let IpNet::V4(net) = network else { unreachable!() };
+            let IpNet::V4(net) = network else {
+                unreachable!()
+            };
             let addr = net.addr();
             let prefix = net.prefix_len();
             let mut args: Vec<String> =

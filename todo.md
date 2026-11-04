@@ -114,3 +114,11 @@
   - 属实并已修复：回滚失败改经 eprintln 输出明确告警（"firewall rollback after partial install failed: …"），不再静默；原始注入错误仍返回给调用方。commit 见本行下方测试证据 `crates/agent/src/firewall.rs:163-171`（eprintln 回滚失败）；`cargo test -p faultdeck-agent --test firewall` → 12 passed。
 - [x] 审核发现：apply_rolls_back_partial_install_on_failure 未断言回滚第一步 `-D INPUT -j FAULTDECK`（跳转移除）被发出，仅断言 -F/-X；mock 对 -D/-F/-X 恒返回 Ok，故"跳转移除被省略"的实现回归能通过本测试，却会在真实 iptables 因 `-X` 报 "Too many links" 而留下悬挂跳转（crates/agent/tests/firewall.rs:289-294）
   - 属实并已补齐：测试新增断言回滚序列先发出 `-D INPUT -j FAULTDECK`（跳转移除），再 -F/-X，确保 -X 不会因链仍被引用报 "Too many links"。commit 见本行下方测试证据 `crates/agent/tests/firewall.rs:288-296`（新增 -D 断言）；`cargo test -p faultdeck-agent --test firewall apply_rolls_back_partial_install_on_failure` → 1 passed。
+- [x] 审核发现：新增 IPv4 预检链式调用未按 rustfmt 要求换行，导致 `cargo fmt --all -- --check` 失败（crates/agent/src/firewall.rs:124）
+  - 属实并已修复：`target.networks().any(...)` 拆为多行；`cargo fmt --all -- --check` → 通过（FMT_OK）。
+- [x] 审核发现：新增 `let ... else { unreachable!() }` 单行写法不符合 rustfmt，格式检查失败（crates/agent/src/firewall.rs:133）
+  - 属实并已修复：`let IpNet::V4(net) = network else { ... }` 改为 rustfmt 多行；`cargo fmt --all -- --check` → 通过（FMT_OK）。
+- [x] 审核发现：新增测试仅用 `any` 断言 `-D INPUT -j FAULTDECK` 存在，未验证其早于 `-F`/`-X`，无法防止回滚顺序回归（crates/agent/tests/firewall.rs:296）
+  - 属实并已补齐：测试改用 `position()` 求 `-D`/`-F`/`-X` 下标并断言 `jump_removal < chain_flush < chain_delete`；`cargo test -p faultdeck-agent --test firewall apply_rolls_back_partial_install_on_failure` → 1 passed。
+- [x] 审核发现：新增测试中 `.iter().any(...)` 链式调用格式不符合 rustfmt（应收为单行），`cargo fmt --all -- --check` 失败（crates/agent/tests/firewall.rs:296）
+  - 属实并已修复：`.iter().any(...)` 改为单行；`cargo fmt --all -- --check` → 通过（FMT_OK）。
