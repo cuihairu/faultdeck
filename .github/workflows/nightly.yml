@@ -1,0 +1,44 @@
+name: nightly
+
+on:
+  schedule:
+    # 21:00 UTC daily
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Create/refresh the rolling nightly release"
+        required: false
+        default: "false"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --release
+      - run: cargo test --workspace --release
+      - name: Stage artifacts
+        run: |
+          mkdir -p dist
+          for bin in faultdeck faultdeck-agent faultdeck-coordinator; do
+            cp target/release/$bin dist/$bin-linux-x86_64
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: faultdeck-nightly-linux-x86_64
+          path: dist/
+          if-no-files-found: error
+      - name: Refresh rolling nightly release
+        if: github.event_name == 'workflow_dispatch' && inputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=nightly
+          stamp=$(date -u +%Y%m%d)
+          gh release delete "$tag" --yes --cleanup-tag || true
+          gh release create "$tag" dist/* \
+            --title "nightly $stamp" \
+            --notes "Rolling nightly build of ${{ github.sha }} (linux-x86_64, built with stable rust)."
