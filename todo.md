@@ -1,124 +1,109 @@
-- [x] FD-P1-4 [P1] faultdeck-agent 常驻被测端(跨机控制核心):监听本地端口收控制端指令,本机执行 tc/netem+iptables 故障;安全守卫=管理网段白名单(SSH/管理 IP 永不被注入)+仅绑 127.0.0.1 或配对 token;Windows faultdeck CLI 增 remote 子命令(发现/认证/下发/回滚);验收:Windows 控制端对 Linux 目标实测断网/延迟/丢包三场景,回滚后管理通道自证畅通。前置:FD-P1-2 netem adapter。
-  - 本地实现完成并验证：crates/core(共享模型+校验)、crates/agent(监听 127.0.0.1:7000、token 鉴权、管理网段白名单、netem+iptables 故障、firewall 断网后端)、crates/cli(remote ping/inject/rollback)。CLI→agent 端到端 ping/rollback 实测通过。验收项 BLOCKED：Windows 控制端对 Linux 目标三场景实测需真实跨机环境，无现成设备，按约定标 BLOCKED 跳过，验收证据待真实设备补充。
-- [x] FD-ARCH-1 [P1] agent 双向连接模式:Mode A=agent 监听(目标有公网 IP,控制端拨入)+Mode B=控制端监听(目标 NAT 后,agent 反向拨号,长连隧道断线重连);单条 TCP 长连接(WebSocket/gRPC stream)承载指令+事件+日志+报告回传,两模式共用协议对称;安全=双向 token+mTLS 可选,agent 默认只信配置控制端指纹。前置:FD-P1-4。
-  - 本地实现完成：crates/agent/src/transport.rs 提供 ModeA(listener accept)与 ModeB(反向拨号+retries/backoff 重连)，send_frame/read_frame 统一 JSON 行帧承载请求/响应，协议对称。3 项传输测试覆盖 Mode A 帧往返、Mode B 拨号、断线重连。跨机长连隧道实测 BLOCKED（需真实 NAT 网络）。
-- [x] FD-REPORT-1 [P1] 报告体系(关键功能):报告=实验唯一事实源——场景 YAML+hash、注入参数与故障状态时间线、恢复验证证据、外部断言结果、一键重现命令;双格式 JSON(CI 回归对比)+HTML(人看时间线图);历史对比=同场景多次运行 diff(回归验证核心);双向模式下报告均可经隧道回传。P0 的 JSON 报告为基础,增强部分排 P2 初。
-  - 本地实现完成：crates/report 提供 Scenario(JSON 规范+SHA256 hash)、RunReport(时间线/恢复证据/外部断言/重现命令)、to_json/to_html、compare_runs(历史 diff)。CLI remote inject 增 --report-json/--report-html 输出。3 项报告测试覆盖 JSON/HTML/hash 稳定/historical diff。隧道回传复用 FD-ARCH-1 transport 帧协议。
-- [x] FD-ARCH-2 [P1] Coordinator 协调者模式(多目标推荐形态):协调者部署在 agent 与控制端都可达处;agent 注册(身份/能力/在线状态,心跳保活),控制端附着发起实验,协调者路由指令与报告回传并存档;解决双向 NAT(两端仅出站连接)、多目标舰队视图、报告集中存档;P3 Web UI 天然部署于协调者。与 Mode A/B 递进:单目标直连用 A/B,多目标/团队用协调者;舰队场景协调者可运行于 meshlet 虚拟网之上(自家产品闭环)。安全:双向 token,mTLS 可选,agent 只信协调者指纹。
-  - 本地实现完成：crates/coordinator 提供 CoordinatorState(agent 注册/心跳/在线状态/能力/集中报告存档)、AgentCommand(register/heartbeat/inject/rollback/fetch_report/list_agents)、AgentResponse、serve() 长连接帧路由，二进制 faultdeck-coordinator。真实 TCP 端到端验证 register/heartbeat/inject/list 通过，报告可经 FetchReport 读取。跨机 NAT/meshlet/mTLS 实测 BLOCKED（需真实网络环境）。
+# faultdeck 需求台账
 
-<!-- 审核记录 2026-11-03 a47ead12..HEAD (commit 8d21b19) crates/netem + CI + workspace 配置 -->
-- [x] 审核发现：混合地址族 Target（source=IPv4 + destination=IPv6）会在 validate() 通过后于 pilot_filter() 返回 UnsupportedIpv6，触发 apply_commands() 的 `.expect("validated injection")` panic——因 validate() 仅用 source.or(destination) 检查单一地址族；Injection 派生 Deserialize，不可信输入可触发该 panic（DoS）。已用临时测试复现（crates/netem/src/lib.rs:365-369,220,259-293）
-  - 属实并已修复：validate() 现逐个检查 source/destination，任一 V6 即拒；新增 rejects_mixed_family_target 测试。commit fd-audit-netem `crates/netem/src/lib.rs:471-492`（validate）、`crates/netem/src/lib.rs:601-607`（rejects_mixed_family_target）。
-- [x] 审核发现：default_device() 解析 /proc/net/route 用错列——columns[3] 实为 Flags（十六进制），并非 Metric（正确列是 columns[6]）；本机 Flags 如 "0001"/"0003" 可被 parse 成功，导致"最优路由"按 Flags 而非 Metric 选取，且未按默认路由（Destination=00000000）或 UP 过滤，通常返回错误接口（如首个 bridge/VPN 设备）（crates/netem/src/lib.rs:388-409）
-  - 属实并已修复：default_device_from_routes() 现校验 Destination=00000000、按 16 进制解析 Flags 且要求 UP 位、正确取 columns[6] Metric；新增 parses_default_route_metric 与 ignores_down_and_nondefault_routes。commit fd-audit-netem `crates/netem/src/lib.rs:535-566`、`crates/netem/src/lib.rs:627-641`。
-- [x] 审核发现：inject() 在 apply 全部命令后立即调用 self.rollback()，故障被应用后瞬间拆除，注入的 netem 故障从未真正持续生效；若意图是"应用并驻留"则为功能缺陷（crates/netem/src/lib.rs:194-202）
-  - 属实并已修复：inject() 不再自动 rollback，应用后故障驻留，由调用方显式 rollback() 拆除；新增 inject_applies_and_persists 断言无 qdisc del。commit fd-audit-netem `crates/netem/src/lib.rs:250-267`、`crates/netem/tests/adapter.rs:62-83`。
-- [x] 审核发现：inject()/apply 中途某条命令失败时直接 `?` 返回，但开头 rollback_command() 已 `tc qdisc del dev <if> root` 破坏性移除接口原有 qdisc，失败后无任何恢复，接口遗留无 root qdisc 状态（crates/netem/src/lib.rs:194-202,218-225）
-  - 属实并已修复：inject() 先 preflight 拒绝外部 root qdisc；命令失败时 rollback_cleanup() 仅删除自家 100: 根 qdisc；新增 inject_partial_failure_rolls_back_created_qdisc。commit fd-audit-netem `crates/netem/src/lib.rs:250-267,289-306`、`crates/netem/tests/adapter.rs:85-110`。
-- [x] 审核发现：rollback() 用错误消息子串（"Cannot find"/"Cannot delete"/"No such file"/"No such device"）抑制失败，脆且易误吞真实错误——例如 PATH 中无 tc 二进制时 spawn 报 "No such file or directory"，被当作回滚成功而静默通过（crates/netem/src/lib.rs:204-216）
-  - 属实并已修复：spawn 失败按 ErrorKind::NotFound 映射为 ProgramMissing（不再落入字符串抑制）；回滚仅抑制 tc 明确“找不到”消息；新增 rollback_suppresses_only_tc_not_found。commit fd-audit-netem `crates/netem/src/lib.rs:185-200,269-287,518-522`、`crates/netem/src/lib.rs:645-652`。
-- [x] 审核发现：rollback_command()/root_qdisc() 无条件 `tc qdisc del dev <if> root` 删除接口现有 root qdisc（如既有 htb/fq_codel 流量整形），对共享接口属破坏性覆盖，无任何"仅删除自身 handle"的保护（crates/netem/src/lib.rs:234-257）
-  - 属实并已修复：inject()/rollback() 先 `tc qdisc show` 检查根 qdisc，仅当 handle 以 100: 开头（自家）才删除/复用，外部 fq_codel/htb 一律拒绝（ExistingRootQdisc）；新增 rollback_refuses_foreign_root_qdisc。commit fd-audit-netem `crates/netem/src/lib.rs:289-306,525-532`、`crates/netem/tests/adapter.rs:149-168`。
-- [x] 审核发现：LatencySpec 无上限校验，milliseconds=u64::MAX 会生成 `delay 18446744073709551615ms` 传给 tc，运行时才失败；LossSpec 的 NaN/∞ 已被 contains() 覆盖（0<percent<=100 正确拒绝 0/-0/NaN/∞），但延迟缺少等价守卫（crates/netem/src/lib.rs:356-363）
-  - 属实并已修复：validate() 现要求 0 < milliseconds <= MAX_LATENCY_MS(24h)，超限返回 InvalidLatency；新增 rejects_latency_zero_and_overflow。commit fd-audit-netem `crates/netem/src/lib.rs:9,474-486`、`crates/netem/src/lib.rs:609-620`。
-- [x] 审核发现：测试缺口——无任何测试覆盖 mixed-family panic 路径（source=V4+dest=V6）、default_device()（含错误列索引，完全未测）、rollback() 错误抑制分支、SystemCommandExecutor 的 dry_run/非 Linux 分支、inject 部分失败恢复；CI 亦无真实 tc 集成测试（crates/netem/tests/adapter.rs）
-  - 属实并已修复：新增 6 项单测+5 项集成测试覆盖上述路径（mixed-family、default_device 列/UP/默认路由、rollback 抑制、inject 部分失败恢复、外部 root qdisc 拒绝）。CI 真实 tc 集成测试仍缺失，标记 FD-AUDIT-TC-IT 后续跟踪（需真实 netns/root 环境，不属本仓库 CI 范围）。commit fd-audit-netem `crates/netem/src/lib.rs:596-663`、`crates/netem/tests/adapter.rs:62-168`。
-- [x] 审核发现：lib.rs 顶部 use std::net::{Ipv4Addr,Ipv6Addr} 与 ipnet::Ipv4Net 仅为 `_type_assertions` 占位（#[allow(dead_code)]）而导入，属死代码/无用依赖引用（crates/netem/src/lib.rs:2-5,411-412）
-  - 属实并已修复：删除占位 use 与 _type_assertions，导入收敛为实际使用项。commit fd-audit-netem `crates/netem/src/lib.rs:1-5`（重写后无占位导入）。
-- [x] 审核发现：本轮 diff 未见命令注入/反序列化越界/资源泄漏问题——tc 以 argv 直接 exec（无 shell 拼接，interface 注入不可行），Injection/LossSpec/LatencySpec 均为简单值类型无递归/无共享引用，无文件句柄或网络资源滞留；安全与泄漏层面结论为通过。
-  - 属实（审核通过结论，非缺陷）。复核确认：tc 以 argv 直接 exec 无 shell 拼接、类型均为简单值无递归引用、无资源滞留。该项维持通过结论，无需改动。commit fd-audit-netem `crates/netem/src/lib.rs`（本轮审计通过）。
+每行一条需求;完成项只保留一行证据(commit + 测试数)。评审详情见 docs/审计-文档一致性.md 与 git log。
 
-## 审核发现
+## 里程碑
 
-- [x] 审核发现：serve() 为每条连接新建 applied HashSet 且每条连接只处理一条请求——CLI 每次调用都是新连接，remote rollback 永远返回 "nothing to roll back"，已注入的 netem/iptables 故障滞留；"another fault is already applied" 单故障保护在真实 serve() 路径永不触发，与 docs/quickstart.md:72 所述行为矛盾（crates/agent/src/lib.rs:228-229,114-117,146-150）
-  - 属实并已修复：serve() 拆为 serve_on()，applied 状态改为跨连接共享 Arc<Mutex<HashSet>>，rollback 在真实 serve() 路径可清除已注入故障；新增 serve_preserves_applied_fault_across_connections 测试。commit a8723b7 crates/agent/src/lib.rs（serve_on 共享状态）、crates/agent/tests/agent.rs（跨连接回归测试）。
-- [x] 审核发现：firewall.ensure_chain() 只执行 -N 创建链 + -C 检查跳转，从不执行 -A/-I 安装 INPUT→FAULTDECK 跳转规则；且链已存在时 -N 直接报错——disconnect 故障的 DROP 规则永远不会生效，apply() 在链残留或首次部署时必然失败（crates/agent/src/firewall.rs:58-62）
-  - 属实并已修复：ensure_chain() 现幂等创建链（容忍 "Chain already exists"）并安装 INPUT→FAULTDECK 跳转（容忍 "Bad rule"）；新增 ensure_chain_is_idempotent_over_lifecycle 测试。commit 2d44b0f crates/agent/src/firewall.rs、crates/agent/tests/firewall.rs。
-- [x] 审核发现：firewall.rollback() 仅 -F/-X，从不删除 INPUT 里的 -j FAULTDECK 跳转，iptables -X 删除被其他链引用的链必失败（"Too many links"），且 -F/-X 对不存在的链硬报错不幂等——真机上 disconnect 无法回滚（crates/agent/src/firewall.rs:87-91）
-  - 属实并已修复：rollback() 先删除 INPUT→FAULTDECK 跳转，再幂等 -F/-X 链（容忍 "Bad rule"/"No chain"/"Too many links"）；新增 rollback_is_idempotent_when_chain_absent 测试。commit 692b023 crates/agent/src/firewall.rs、crates/agent/tests/firewall.rs。
-- [x] 审核发现：firewall.apply() 对 target.networks()（含 source 与 destination）一律生成 -d 规则，source 网段被错误当作目标匹配；且完全忽略 destination_port 与 DisconnectSpec.all_traffic——带 --port-spec 的 disconnect 会 DROP 整个目标网段而非指定端口，全量断网(all_traffic)字段形同虚设（crates/agent/src/firewall.rs:64-85；crates/cli/src/main.rs:138-157）
-  - 属实并已修复：apply() 现按 source→-s / destination→-d 生成匹配，all_traffic=false 时追加 --dport 端口规则；CLI 在 --port-spec 存在时将 all_traffic 置 false。新增 apply_uses_source_destination_and_port_matches 测试。commit be7461c crates/agent/src/firewall.rs、crates/cli/src/main.rs、crates/agent/tests/firewall.rs。
-- [x] 审核发现：handle_connection 先 read_line 无上限读取整行，MAX_INJECTION_BYTES(64KiB) 在整行读入内存后才校验——客户端发送无换行的大包可致 agent 内存耗尽(DoS)；transport::read_frame 同样无行长上限（crates/agent/src/lib.rs:183,203；crates/agent/src/transport.rs:36）
-  - 属实并已修复：handle_connection 改用 read_line_limited(MAX_INJECTION_BYTES)，transport::read_frame 改用有界读帧(MAX_FRAME_BYTES=64KiB)，均逐块 fill_buf/consume 硬限读入即中止。新增 oversized_line_is_rejected_without_buffering 与 oversized_frame_is_rejected 测试。commit 73008a3 crates/agent/src/lib.rs、crates/agent/src/transport.rs、crates/agent/tests/agent.rs。
-- [x] 审核发现：RunReport::to_html 将 scenario_name/event.kind/event.message/restore detail/assertion detail/replay_command 直接以 {} 拼入 HTML 不做转义——含 <script> 的场景名/事件消息可致报告 HTML 存储型 XSS（crates/report/src/lib.rs:92-135）
-  - 属实并已修复：新增 html_escape()（转义 & < > " '）并在 to_html 中对 scenario_name/hash/replay_command/event.kind/message/restore/assertion 全部转义。新增 to_html_escapes_malicious_input 测试。commit f5f5ef2 crates/report/src/lib.rs、crates/report/tests/report.rs。
-- [x] 审核发现：coordinator serve() 无任何鉴权（任何可达客户端可 register/heartbeat/inject/list/fetch_report），且 AgentCommand::Inject 不做 core 校验与管理网段守卫、对未知 id 仍返回 "queued"，与 Heartbeat 的 NotRegistered 行为不一致（crates/coordinator/src/lib.rs:156-166,121-131）
-  - 属实并已修复：Coordinator 增 token 鉴权（with_token/authorize），wire 消息改为 WireMessage{token,command} 并在 handle_stream_with_token 校验；Inject 先校验未注册 id（NotRegistered）与 validate_injection（InvalidInjection）。新增 wrong_token_rejected、inject_unknown_agent_rejected、inject_invalid_injection_rejected、handle_connection_rejects/accepts_authorized_wire_message 测试；coordinator 二进制支持 --token。commit b5224d0 crates/coordinator/src/lib.rs、crates/coordinator/src/main.rs、crates/coordinator/tests/coordinator.rs。
-- [x] 审核发现：netem inject() 在 preflight 后再次 cleanup_command_for_leftover 重复执行 tc qdisc show，且两段检查之间存在 TOCTOU：若 add 时接口出现外部 root qdisc 导致失败，rollback_cleanup() 会无条件 `tc qdisc del dev <if> root` 误删该外部 qdisc（crates/netem/src/lib.rs:202-218,264-273）
-  - 属实并已修复：inject() 现单次 preflight 返回是否残留自家 qdisc 并据此插入清理命令，删除重复 show；失败清理仅在已成功创建自家 root qdisc 后执行（own_qdisc_created），外部 qdisc 在 TOCTOU 窗口出现导致 add 失败时不再误删。新增 inject_does_not_delete_foreign_qdisc_on_toctou_failure 测试。commit 277e297 crates/netem/src/lib.rs、crates/netem/tests/adapter.rs。
-- [x] 审核发现：rollback()/preflight() 开头 run_capture(tc qdisc show) 对接口缺失/外部 qdisc 的 "No such device" 等消息硬返回 Err，与随后 del 命令对同类消息用 is_tc_not_found_message 容忍的策略不一致——接口消失时 rollback 不再幂等（crates/netem/src/lib.rs:220-238,457-462）
-  - 属实并已修复：rollback() 对 run_capture 的 "Cannot find"/"No such device" 等消息按 is_tc_not_found_message 容忍并跳过检查，与 del 的容忍策略一致；接口消失时回滚幂等成功。新增 rollback_is_idempotent_when_device_missing 测试。commit b0a28f4 crates/netem/src/lib.rs、crates/netem/tests/adapter.rs。
-- [x] 审核发现：parse_root_qdisc 在循环内用 tokens.next()? 遇截断 "qdisc" 行即返回 None 提前终止整段扫描，后续外部 root qdisc 行会被漏检（crates/netem/src/lib.rs:464-477）
-  - 属实并已修复：parse_root_qdisc 对截断行改为 continue 跳过，不提前终止扫描；后续有效 root qdisc 仍被检测。新增 parse_root_qdisc_skips_truncated_line 测试。commit 2882fd7 crates/netem/src/lib.rs。
-- [x] 审核发现：validate() 将 CoreError::OverlapsManagement 映射为 AdapterError::EmptyTarget（"fault target is empty"）——错误语义误导，且 core 当前不产生该错误，属死分支（crates/netem/src/lib.rs:437）
-  - 属实并已修复：validate() 现将 OverlapsManagement 映射为新增 AdapterError::ManagementOverlap（"target overlaps a management network..."），不再伪装成 EmptyTarget；新增 management_overlap_error_is_distinct 测试。commit 1fad789 crates/netem/src/lib.rs。
-- [x] 审核发现：token 用非常量时间 == 比较且明文经 TCP 传输（mTLS 未实现），bind 0.0.0.0 且未配 token 时无告警（仅 management 为空有告警）——agent 可被远程无鉴权控制（crates/agent/src/lib.rs:67-70；crates/agent/src/main.rs:59-62）
-  - 属实并已修复：token_ok 改用 constant_time_eq（XOR 累计常量时间比较）；main 在非 loopback bind 且未配置 token 时输出 warn_insecure_bind 告警。新增 constant_time_eq_matches_only_equal_slices、loopback_bind_detection、warn_insecure_bind_flags_remote_without_token 测试。明文 TCP/mTLS 属独立架构项，不在本次修复。commit 4dbd049 crates/agent/src/lib.rs、crates/agent/src/main.rs、crates/agent/tests/agent.rs。
-- [x] 审核发现：wire 协议脆弱——即使未配置 token，首个空格仍被当作 token 分隔符，含空格的 payload（如 pretty-printed JSON）会被截断破坏；超限 payload 与 JSON 解码失败路径直接返回 Err 不写响应，客户端只见 EOF+解码错误无明确消息（crates/agent/src/lib.rs:188-207）
-  - 属实并已修复：仅当配置 token 时才把首个空格当 token 分隔符（否则整行作 payload）；超限/无效 JSON/无效 injection 路径现写入 {"status":"error","message":...} 响应而非静默 Err。新增 wire_payload_with_spaces_is_valid_without_token、handle_connection_writes_json_error_response 测试。commit f6293b2 crates/agent/src/lib.rs、crates/agent/tests/agent.rs。
-- [x] 审核发现：CLI 生成的 replay_command 不含 --milliseconds/--percent/--port-spec，latency/loss 场景的一键重现命令不完整、不可复现（crates/cli/src/main.rs:172-182）
-  - 属实并已修复：replay_command 现包含 --milliseconds/--percent/--port-spec/--scenario-name 与 --token（存在时），latency/loss 可精确复现。新增 cli_replay_command_includes_all_fault_parameters 端到端测试（真实 CLI 注入+dry-run agent）。commit 23203c3 crates/cli/src/main.rs、crates/cli/tests/remote.rs。
-- [x] 审核发现：测试缺口——crates/agent/src/firewall.rs 无任何单元/集成测试（真实 iptables 路径全未测，仅 dry_run 被用到），ensure_chain/apply/rollback 的生命周期缺陷未被捕获（crates/agent/src/firewall.rs）
-  - 属实并已补齐：新增 crates/agent/tests/firewall.rs 集成测试，用 mock iptables 脚本覆盖 ensure_chain 幂等、rollback 幂等（链缺失）、apply 的 source/destination/port 匹配与完整 apply→rollback 生命周期命令序列。commit 282d597 crates/agent/tests/firewall.rs。
-- [x] 审核发现：测试缺口——serve() 的每连接状态循环无测试（agent/cli 测试均为手动共享 HashSet 或直接调用 handle_connection），per-connection applied 缺陷未暴露；coordinator serve()/handle_stream 亦无 TCP 集成测试（crates/agent/tests/agent.rs:75-160；crates/cli/tests/remote.rs:31-41；crates/coordinator/tests/coordinator.rs）
-  - 属实并已补齐：agent 新增 serve_preserves_applied_fault_across_connections（真实 serve_on 循环跨连接保持 applied）；coordinator 新增 handle_connection_rejects/accepts_authorized_wire_message 与 serve_accepts_tcp_register_and_list（真实 TCP accept 循环鉴权注册）。commit 3aed791 crates/agent/tests/agent.rs、crates/coordinator/src/lib.rs、crates/coordinator/tests/coordinator.rs。
-- [x] 审核发现：测试缺口——RunReport::to_html 无转义/恶意输入测试，CLI send() 无端到端测试、无超时（read_to_string 可永久阻塞）与无 token 默认配置下的行为测试（crates/report/tests/report.rs；crates/cli/src/main.rs:95-115）
-  - 属实并已补齐：to_html 新增 to_html_escapes_malicious_input；CLI send() 增加读/写超时（默认 5s，可经 FAULTDECK_TIMEOUT_SECS 覆盖）并新增 cli_send_times_out_on_unresponsive_server；cli_remote_ping_integration 覆盖无 token 默认配置；firewall 测试改用注入 runner（消除 shell 脚本 Text file busy flaky）。commit 07bac2e crates/report/tests/report.rs、crates/cli/src/main.rs、crates/cli/tests/remote.rs、crates/agent/src/firewall.rs、crates/agent/tests/firewall.rs、crates/agent/src/main.rs、crates/agent/tests/agent.rs、crates/cli/tests/remote.rs。
+- [x] FD-P1-4 [P1] faultdeck-agent 常驻被测端:监听本地端口收控制端指令,本机执行 tc/netem 与 iptables 故障;安全守卫=管理网段白名单+仅绑回环或配对 token;CLI 增 remote 子命令。
+  - commit daed723;测试 agent 14 + transport 3 + cli 6;跨机 Windows→Linux 三场景实测 BLOCKED(无设备)
+- [x] FD-ARCH-1 [P1] agent 双向连接:Mode A=agent 监听,Mode B=agent 反向拨号(断线重连),单条长连承载指令/事件/日志/报告,双向 token。
+  - commit daed723;测试 transport 3;跨机 NAT 实测 BLOCKED
+- [x] FD-REPORT-1 [P1] 报告体系:场景 JSON+SHA256 哈希、RunReport 时间线/恢复证据/外部断言/重现命令、JSON+HTML 双格式、compare_runs 历史 diff。
+  - commit d7cda7d;测试 report 4
+- [x] FD-ARCH-2 [P1] Coordinator 多目标中枢:agent 注册/心跳/在线状态,控制端发起实验,指令路由与报告集中存档,解决双向 NAT。
+  - commit e41d3f5;测试 coordinator 10;跨机 NAT/mTLS 实测 BLOCKED
 
-- [x] 审核发现：firewall.apply() 在 all_traffic=false 且存在 destination_port 时生成 `--dport <port>`，但从不带 `-p tcp|udp` 协议匹配——真实 iptables 对无协议的 `--dport` 直接报 "unknown option --dport"，新加的 --port-spec 端口级 disconnect 规则在真机上永远装不上；mock runner 测试只断言 argv 不校验 iptables 语法，故未暴露（crates/agent/src/firewall.rs:114-120；crates/cli/src/main.rs:166-170；crates/agent/tests/firewall.rs:90-113）
-  - 属实并已修复：apply() 在 all_traffic=false 且带 destination_port 时先追加 `-p tcp` 再 `--dport <port>`，规避 iptables "unknown option --dport"。commit e1d048a `crates/agent/src/firewall.rs:115-119`（-p tcp）、`crates/agent/tests/firewall.rs:107`（断言含 -p tcp）。
-- [x] 审核发现：firewall.ensure_chain() 注释称 `-I INPUT -j FAULTDECK` 容忍已存在的跳转（"Bad rule"），但 iptables `-I` 无条件插入、从不因规则已存在而报 "Bad rule"（该消息仅来自 -C/-D）——该容忍是死代码，跳转并不幂等；agent 重启后（applied 为内存态）残留的链+跳转会令下次 apply 再插一条跳转，rollback 只 -D 一条，-X 因 "Too many links" 被容忍，遗留链与跳转随重启周期累积（crates/agent/src/firewall.rs:85-89,129-141）
-  - 属实并已修复：ensure_chain() 改用 `-C` 先探测跳转是否存在，仅在 "Bad rule"（不存在）时 `-I` 插入，插入真正幂等，杜绝重启后残留跳转重复累积。commit 8897d0c `crates/agent/src/firewall.rs:81-104`（-C 探测+条件 -I）、`crates/agent/tests/firewall.rs:64-96`（ensure_chain_is_idempotent_over_jump_lifecycle）。
-- [x] 审核发现：netem inject() 的 own_qdisc_created 标志在 leftover=true 路径被提前置真——首条命令是清理用 `del`，其成功后即置 true，此时尚无自家 qdisc；若随后的 root qdisc `add` 因窗口期出现外部 qdisc 而失败（本修复针对的同一 TOCTOU），rollback_cleanup() 仍会 `tc qdisc del ... root` 误删外部 qdisc。防护仅在 leftover=false 路径生效，且 inject_does_not_delete_foreign_qdisc_on_toctou_failure 只覆盖该无遗留分支（crates/netem/src/lib.rs:208-226；crates/netem/tests/adapter.rs:172-207）
-  - 属实并已修复：inject() 将 leftover 清理 `del` 单独执行，own_qdisc_created 仅在自家 root qdisc `add` 成功后置真；leftover 路径上随后的 add 因外部 qdisc 出现而失败时不再误删。commit 948ecd6 `crates/netem/src/lib.rs:204-235`（index 跳过清理）、`crates/netem/tests/adapter.rs:211-252`（inject_leftover_does_not_delete_foreign_qdisc_on_toctou_failure）。
-- [x] 审核发现：coordinator authorize() 用普通 `token == Some(expected.as_str())` 比较，而同一修复序列（commit 4dbd049）已把 agent 的 token 比较升级为 constant_time_eq——coordinator 令牌比对仍存在时序侧信道，两处不一致（crates/coordinator/src/lib.rs:116-122；crates/agent/src/lib.rs:109-116）
-  - 属实并已修复：authorize() 改用 faultdeck_agent::constant_time_eq 做字节比较，与 agent 的 token_ok 一致，消除时序侧信道。commit 9efe696 `crates/coordinator/src/lib.rs:116-129`、`crates/coordinator/tests/coordinator.rs:121-136`（正确 token 通过断言）。
-- [x] 审核发现：coordinator 二进制 CLI 由位置参数改为 --bind/--token 旗标（遇未知/位置参数直接 bail），但文档仍写 `faultdeck-coordinator [BIND]`——按文档调用 `faultdeck-coordinator 127.0.0.1:7001` 现直接报 "unknown arg"，文档与实现不一致（crates/coordinator/src/main.rs:1-28；docs/configuration.md:30；docs/zh/configuration.md:30）
-  - 属实并已修复：docs/configuration.md 与 docs/zh/configuration.md 的 coordinator 段改为 `--bind 127.0.0.1:7001 [--token ...]`，与二进制旗标解析一致。commit 0709d5b `docs/configuration.md:10-14`、`docs/zh/configuration.md:10-14`。
-- [x] 审核发现：coordinator 线协议帧由裸 AgentCommand 改为 WireMessage{token,command} 信封，但 docs/remote-agents.md:42-55 与 docs/zh/remote-agents.md 仍文档化 `{"cmd":...}` 裸帧且未提及 --token/信封——协议破坏性变更未同步文档（crates/coordinator/src/lib.rs:98-102,214-224）
-  - 属实并已修复：docs/remote-agents.md 与 docs/zh/remote-agents.md 的 coordinator 协议段改为 `WireMessage` 信封 `{"token":…,"command":…}` 并注明 --token 常量时间鉴权。commit 8da393e `docs/remote-agents.md:40-59`、`docs/zh/remote-agents.md:40-59`。
-- [x] 审核发现：docs/remote-agents.md:38 仍称 "applied-fault state is per-connection (a fresh HashSet per stream)"，而 serve_on 现已用 Arc<Mutex<HashSet>> 跨连接共享 applied——该生命周期说明已与实现不符（crates/agent/src/lib.rs:316-337；docs/remote-agents.md:38；docs/zh/remote-agents.md:38）
-  - 属实并已修复：docs/remote-agents.md 与 docs/zh/remote-agents.md 的 lifecycle 说明改为跨连接共享 `Arc<Mutex<HashSet>>`，与 serve_on 实现一致。commit 7b2ad2f `docs/remote-agents.md:38`、`docs/zh/remote-agents.md:38`。
-- [x] 审核发现：CLI replay_command 追加 --token/--scenario-name/--port-spec 时不做 shell 引号包裹——场景名或 token 含空格/shell 元字符时生成的复现命令无法按原样执行（crates/cli/src/main.rs:201-215）
-  - 属实并已修复：replay_command 对 --destination/--host/--token/--scenario-name 用 shell_quote() 单引号包裹（含空格/元字符值），复现命令可原样执行。commit 5784d4f `crates/cli/src/main.rs:135-145`（shell_quote）、`crates/cli/src/main.rs:213-230`（应用处）、`crates/cli/tests/remote.rs:62-115`（cli_replay_command_quotes_shell_metacharacters）。
+## 评审修复 2026-11-03(netem)
 
-<!-- 审核记录 2026-11-04 a0bb5c76..HEAD (commit dc63a6a) crates/netem + agent/firewall + coordinator + cli 修复序列复核 -->
-- [x] 审核发现：inject() 的 leftover 恢复路径回归——commit 948ecd6 删除了 `commands.insert(0, self.rollback_command())`，但 leftover 分支现直接执行 `commands[0]`，而 apply_commands() 的 commands[0] 是 root qdisc 的 `add`（`tc qdisc add dev <if> root handle 100: prio`，非清理 `del`）；存在遗留 100: qdisc 时 `add` 报 "File exists"，inject() 从此永远无法从遗留恢复（崩溃/重启后二次注入必失败），与 preflight 返回 leftover=true 的设计意图相悖；注释 "commands[0] is the cleanup del (see apply_commands + leftover)" 不成立，apply_commands 并不前置 del（crates/netem/src/lib.rs:215-221,294-301；基线 a0bb5c76 版本含 `commands.insert(0, rollback_command())`）
-  - 属实并已修复：leftover 分支改为执行 `rollback_command()` 清理遗留 100: qdisc，再从首条 `add` 重新应用完整序列；`own_qdisc_created` 仍在首条 `add` 成功后才置真。commit 见本行下方测试证据 `crates/netem/src/lib.rs:212-218`（leftover 清理 + own_qdisc_created 逻辑）。
-- [x] 审核发现：测试缺口（掩盖上述回归）——inject_leftover_does_not_delete_foreign_qdisc_on_toctou_failure 的 mock 仅对 `add` 返回 Err 且测试只断言 `result.is_err()`，从不校验"先发清理 `del` 再 `add`"的命令序列，故该测试通过但原因错误，未暴露缺失的清理 del（crates/netem/tests/adapter.rs:212-246）
-  - 属实并已补测试：`inject_leftover_cleans_own_qdisc_before_reapply` 断言 `del` 先于 `add`；`inject_leftover_does_not_delete_foreign_qdisc_on_toctou_failure` 现记录命令序列并断言 `del` 只发一次、位于首条 `add` 前。证据：`crates/netem/tests/adapter.rs:212`、`crates/netem/tests/adapter.rs:270`；`cargo test -p faultdeck-netem --test adapter inject_leftover` → 2 passed。
-- [x] 审核发现：firewall.apply() 对 --dport 硬编码 `-p tcp`——--port-spec 断连仅 DROP TCP 到该端口，UDP 流量不受影响；DisconnectSpec 无协议字段，属新增的 TCP-only 假设（较此前规则完全装不上已是改进，但 UDP 端口级断连语义缺失）（crates/agent/src/firewall.rs:139-140）
-  - 属实并已修复：--port-spec 端口级断连改为同时安装 `-p tcp` 与 `-p udp` 两条 `--dport` DROP 规则，覆盖完整端口断连语义。证据：`crates/agent/src/firewall.rs:135-151`（tcp+udp 循环）、`crates/agent/tests/firewall.rs:153-158`（断言 tcp+udp 均含 --dport）；`cargo test -p faultdeck-agent --test firewall apply_uses_source_destination_and_port_matches` → 1 passed。
-- [x] 审核发现：constant_time_eq 在长度不等时提前 return false，token 长度经时序泄漏（agent 与 coordinator 共用同一函数）；commit 9efe696 声称"消除时序侧信道"仅消除字节级差异，长度仍可测（crates/agent/src/lib.rs:35-44；crates/coordinator/src/lib.rs:124）
-  - 属实并已修复：`constant_time_eq` 不再在长度不等时提前返回；长度差被折叠进累计器，循环遍历较长切片并对缺失字节补零，等长/不等长均走相同循环长度，消除长度时序分支。证据：`crates/agent/src/lib.rs:35-53`、`crates/agent/tests/agent.rs:238-251`（新增前缀长度不等的负例）；`cargo test -p faultdeck-agent --test agent constant_time_eq` → 1 passed。
-- [x] 审核发现：测试缺口——cli_replay_command_quotes_shell_metacharacters 仅断言生成串含单引号包裹，未通过 `sh -c` 实际执行验证可安全运行，也未覆盖值内含单引号 `'`（走 `'\''` 转义分支）的情形（crates/cli/tests/remote.rs:122-192；crates/cli/src/main.rs:143）
-  - 属实并已补测试：现测试读取 JSON 中的 `replay_command`，把 CLI 二进制目录加入 PATH 后通过 `sh -c` 实际执行；另新增含单引号场景名用例，断言生成 `'\''` 转义并同样 `sh -c` 执行成功。证据：`crates/cli/tests/remote.rs:121-227`；`cargo test -p faultdeck --test remote cli_replay_command_quotes` → 2 passed。
-- [x] 审核发现：shell_quote 免引号快速路径允许以 `-` 开头的值（允许字符集含 `-`），token/host 以 `-` 开头时生成的 replay 命令 `--token -xxx` 会被 clap 当作旗标解析而无法复现（非注入，属边界正确性）（crates/cli/src/main.rs:136-141）
-  - 属实并已修复：replay 命令改用 `--token=<value>` 形式，clap 把等号后值作为选项值解析而非旗标；同时 token 参数加 `allow_hyphen_values = true` 让原始 `--token -xxx` 也能被接受。证据：`crates/cli/src/main.rs:36-40`（allow_hyphen_values）、`crates/cli/src/main.rs:214-224`（--token= 形式）、`crates/cli/tests/remote.rs:290-376`（cli_replay_command_handles_dash_leading_token）；`cargo test -p faultdeck --test remote cli_replay_command_handles_dash_leading_token` → 1 passed。
-- [x] 审核发现：ensure_chain() 的 `-C` 探测在 dry_run 模式下经 run() 恒返回 Ok（短路），故 dry-run 不再发出 `-I` 跳转安装命令，与真实执行（及测试 recorder 路径）行为不一致，dry-run 命令序列失真（crates/agent/src/firewall.rs:46-53,91-108）
-  - 属实并已修复：dry_run 下 `-C` 探测直接视为"跳转不存在"，仍触发 `-I` 命令发出，与真实首次部署序列一致；同时 `run()` 的 dry_run 短路移到 `binary()` 检查之前，使纯 dry_run（无 path）不再报 IptablesMissing。证据：`crates/agent/src/firewall.rs:48-52`（run dry_run 短路）、`crates/agent/src/firewall.rs:93-110`（-C dry_run 分支）、`crates/agent/tests/firewall.rs:54-77`（dry_run 发出 -I 与纯 dry_run 成功）；`cargo test -p faultdeck-agent --test firewall ensure_chain` → 5 passed。
+- [x] netem:validate() 逐个检查 source/destination 地址族,拒绝混合 V4/V6 目标。
+  - commit 5197819;测试 netem 单测 8 + adapter 集成 9
+- [x] netem:default_device 按 Destination=00000000、UP 位、columns[6] Metric 正确解析 /proc/net/route。
+  - commit 5197819;测试同上
+- [x] netem:inject() 应用后故障驻留,回滚由调用方显式触发。
+  - commit 5197819;测试同上
+- [x] netem:注入中途失败仅清理自家 100: qdisc,不破坏接口原有 qdisc。
+  - commit 5197819;测试同上
+- [x] netem:回滚只抑制 tc「找不到」类消息,spawn 失败映射 ProgramMissing。
+  - commit 5197819;测试同上
+- [x] netem:拒绝覆盖外部 root qdisc,仅删除自家 100: 句柄。
+  - commit 5197819;测试同上
+- [x] netem:延迟参数 0<ms≤24h 校验,拒绝溢出值。
+  - commit 5197819;测试同上
+- [x] netem:补齐 mixed-family/default_device/回滚抑制/dry_run/部分失败测试;真实 tc 集成测试挂 FD-AUDIT-TC-IT。
+  - commit 5197819;测试同上
+- [x] netem:清理死代码占位导入。
+  - commit 5197819
+- [x] netem:leftover 恢复路径:遗留 100: qdisc 时先发清理 del 再重新 apply。
+  - commit 8cb8388;测试 inject_leftover 2
+- [x] netem:TOCTOU 窗口内 add 失败不误删外部 qdisc;测试断言 del 先于 add。
+  - commit 948ecd6 + 8cb8388;测试 inject_leftover 2
+- [x] netem:rollback 对接口缺失类消息容忍,幂等。
+  - commit b0a28f4
+- [x] netem:parse_root_qdisc 截断行跳过,不提前终止扫描。
+  - commit 2882fd7
+- [x] netem:OverlapsManagement 映射为独立错误,不再伪装 EmptyTarget。
+  - commit 1fad789
 
-- [x] 审核发现：constant_time_eq 的循环上界 `n = max(a.len(), b.len())` 仍随输入长度变化——攻击者发送比预期 token 更短的串时，循环迭代次数（执行时长）仍泄露预期 token 长度；"消除长度时序分支"仅移除了提前 return，长度信息仍经循环次数泄漏（crates/agent/src/lib.rs:38,43）
-  - 属实并已修复：循环改为固定按预期值 `b.len()` 执行（两处调用均为 attacker 值在前、expected 值在后），超出预期长度的差异由完整 64-bit 长度折叠吸收。证据：`crates/agent/src/lib.rs:35-58`；`cargo test -p faultdeck-agent --test agent constant_time_eq` → 2 passed。
-- [x] 审核发现：constant_time_eq 的长度折叠 `(len_diff | len_diff>>8 | len_diff>>16 | len_diff>>32) as u8` 对 len_diff 仅含 bit{24-31,40-47,48-55,56-63} 时折叠为 0——长度不等（如 16MiB 全零串 vs 空串）会被误判相等返回 true，且新增前缀负例仅覆盖长度差 1 的情形（crates/agent/src/lib.rs:42）
-  - 属实并已修复：长度差异改为遍历 `u64::to_le_bytes()` 的全部 8 字节后 OR 折叠，高位字节不再丢失；新增 16MiB 全零/空串及 16MiB/1 字节负例。证据：`crates/agent/src/lib.rs:43-58`、`crates/agent/tests/agent.rs:238-260`；`cargo test -p faultdeck-agent --test agent constant_time_eq` → 2 passed。
-- [x] 审核发现：firewall.apply() 端口断连现分两次 run() 安装 tcp 与 udp 两条 DROP 规则——若第二条（udp）失败而第一条已装，错误路径不调 rollback 也不标记 applied，留下孤立 tcp DROP 规则且客户端误以为未注入（crates/agent/src/firewall.rs:146-160）
-  - 属实并已修复：任一规则安装失败时先尽力执行 rollback 清空/删除 FAULTDECK 链，再返回原始错误，避免 tcp 已装而调用方视为未注入留下孤规则。证据：`crates/agent/src/firewall.rs:154-167`、`crates/agent/tests/firewall.rs:261-312`；`cargo test -p faultdeck-agent --test firewall` → 11 passed。
+## 评审修复 2026-11-03(agent/report/coordinator/cli)
 
-- 不属实：constant_time_eq 现以服务端固定值 `b.len()` 为循环上界，攻击者仅控制 `a` 无法改变迭代次数，执行时长与攻击者输入无关（无差分侧信道）；绝对时长与固定服务端常量相关并非可利用漏洞，且值级比较已为恒定时间，此为标准常量时间实践，无需修复。
+- [x] agent:serve() applied 状态跨连接共享,rollback 在真实 serve 路径可清除故障。
+  - commit a8723b7
+- [x] agent:ensure_chain 幂等创建链并安装 INPUT 跳转。
+  - commit 2d44b0f
+- [x] agent:rollback 先删跳转再幂等 -F/-X。
+  - commit 692b023
+- [x] agent:firewall 按 source/destination 生成匹配,端口级断连生效;CLI --port-spec 时置 all_traffic=false。
+  - commit be7461c
+- [x] agent:请求行与传输帧限长 64KiB,防内存耗尽。
+  - commit 73008a3
+- [x] report:to_html 全字段 HTML 转义,防存储型 XSS。
+  - commit f5f5ef2
+- [x] coordinator:token 鉴权 + inject 校验/管理网段守卫 + 未知 id 拒绝;二进制支持 --token。
+  - commit b5224d0
+- [x] 测试:firewall 生命周期、serve 跨连接、coordinator TCP 集成、to_html 恶意输入、CLI 超时(默认 5s,FAULTDECK_TIMEOUT_SECS 可覆盖)。
+  - commit 282d597 + 3aed791 + 07bac2e;测试 firewall 12 + coordinator 10
+- [x] cli:replay_command 补全全部故障参数。
+  - commit 23203c3
+- [x] agent:token 常量时间比较;非回环 bind 且无 token 时告警。
+  - commit 4dbd049
+- [x] agent:无 token 时整行作 payload,不截断含空格内容;错误路径返回 JSON 错误响应。
+  - commit f6293b2
 
-- [x] 审核发现：apply() 的 `TargetNotV4` 早退路径不调 rollback——target 为 source=V4 + destination=V6 混合时，V4 规则已装入后遇 V6 返回 Err 而留下孤规则，与本次"部分安装失败即回滚"的意图不一致；经 validate_injection 的服务器路径先拒 V6 故当前不可达，但 apply()/process_request 为 pub，直接调用方可触发（crates/agent/src/firewall.rs:125-127）
-  - 属实并已修复：apply() 在触碰 iptables 前先预检全部 network 均为 IPv4，混合地址族直接返回 TargetNotV4 且不产生任何命令（含 ensure_chain），杜绝 V4 规则已装而留孤规则。commit 见本行下方测试证据 `crates/agent/src/firewall.rs:119-125`（预检）、`crates/agent/tests/firewall.rs:297-326`（apply_rejects_mixed_family_before_installing_any_rule 断言零调用）；`cargo test -p faultdeck-agent --test firewall apply_rejects_mixed_family_before_installing_any_rule` → 1 passed。
-- [x] 审核发现：apply() 部分安装失败时的回滚错误被 `let _ = self.rollback()` 静默丢弃且无任何日志——若 -D/-F/-X 本身失败，客户端被告知"未注入"而 iptables 仍残留 DROP 规则，运维无任何排查线索（crates/agent/src/firewall.rs:167）
-  - 属实并已修复：回滚失败改经 eprintln 输出明确告警（"firewall rollback after partial install failed: …"），不再静默；原始注入错误仍返回给调用方。commit 见本行下方测试证据 `crates/agent/src/firewall.rs:163-171`（eprintln 回滚失败）；`cargo test -p faultdeck-agent --test firewall` → 12 passed。
-- [x] 审核发现：apply_rolls_back_partial_install_on_failure 未断言回滚第一步 `-D INPUT -j FAULTDECK`（跳转移除）被发出，仅断言 -F/-X；mock 对 -D/-F/-X 恒返回 Ok，故"跳转移除被省略"的实现回归能通过本测试，却会在真实 iptables 因 `-X` 报 "Too many links" 而留下悬挂跳转（crates/agent/tests/firewall.rs:289-294）
-  - 属实并已补齐：测试新增断言回滚序列先发出 `-D INPUT -j FAULTDECK`（跳转移除），再 -F/-X，确保 -X 不会因链仍被引用报 "Too many links"。commit 见本行下方测试证据 `crates/agent/tests/firewall.rs:288-296`（新增 -D 断言）；`cargo test -p faultdeck-agent --test firewall apply_rolls_back_partial_install_on_failure` → 1 passed。
-- [x] 审核发现：新增 IPv4 预检链式调用未按 rustfmt 要求换行，导致 `cargo fmt --all -- --check` 失败（crates/agent/src/firewall.rs:124）
-  - 属实并已修复：`target.networks().any(...)` 拆为多行；`cargo fmt --all -- --check` → 通过（FMT_OK）。
-- [x] 审核发现：新增 `let ... else { unreachable!() }` 单行写法不符合 rustfmt，格式检查失败（crates/agent/src/firewall.rs:133）
-  - 属实并已修复：`let IpNet::V4(net) = network else { ... }` 改为 rustfmt 多行；`cargo fmt --all -- --check` → 通过（FMT_OK）。
-- [x] 审核发现：新增测试仅用 `any` 断言 `-D INPUT -j FAULTDECK` 存在，未验证其早于 `-F`/`-X`，无法防止回滚顺序回归（crates/agent/tests/firewall.rs:296）
-  - 属实并已补齐：测试改用 `position()` 求 `-D`/`-F`/`-X` 下标并断言 `jump_removal < chain_flush < chain_delete`；`cargo test -p faultdeck-agent --test firewall apply_rolls_back_partial_install_on_failure` → 1 passed。
-- [x] 审核发现：新增测试中 `.iter().any(...)` 链式调用格式不符合 rustfmt（应收为单行），`cargo fmt --all -- --check` 失败（crates/agent/tests/firewall.rs:296）
-  - 属实并已修复：`.iter().any(...)` 改为单行；`cargo fmt --all -- --check` → 通过（FMT_OK）。
+## 评审修复 2026-11-04
+
+- [x] firewall:--dport 规则带 -p tcp,规则可真实安装。
+  - commit e1d048a
+- [x] firewall:跳转安装改 -C 探测后 -I,重启周期不累积残留跳转。
+  - commit 8897d0c
+- [x] coordinator:token 比较复用 constant_time_eq,与 agent 一致。
+  - commit 9efe696
+- [x] 文档:configuration 补 coordinator --bind/--token 旗标。
+  - commit 0709d5b
+- [x] 文档:remote-agents 补 WireMessage 信封与 --token。
+  - commit 8da393e
+- [x] 文档:applied 状态跨连接共享的生命周期说明。
+  - commit 7b2ad2f
+- [x] cli:replay 参数 shell 引号包裹,含元字符值可原样执行。
+  - commit 5784d4f
+- [x] firewall:端口级断连同时 DROP tcp 与 udp。
+  - commit 8512d00
+- [x] agent:constant_time_eq 循环按预期值长度固定执行,消除长度时序分支。
+  - commit 69c97c9
+- [x] cli:replay 命令经 sh -c 实际执行验证,覆盖内嵌单引号转义。
+  - commit 5f4b589
+- [x] cli:replay 值改 --token=<value> 形式,支持 - 开头值。
+  - commit fe122fb
+- [x] firewall:dry_run 仍发出跳转安装命令;纯 dry_run 不报 IptablesMissing。
+  - commit fb011af
+- [x] agent:constant_time_eq 长度差按 8 字节完整折叠,消除误判相等。
+  - commit bb6e755
+- [x] firewall:部分安装失败先回滚再报错;回滚失败输出告警不静默。
+  - commit 69c97c9 + 7803c1a
+- [x] firewall:mixed-family 目标在触碰 iptables 前预检拒绝,零命令输出。
+  - commit 7803c1a
+- [x] 测试:回滚序列断言 -D 跳转移除先于 -F/-X。
+  - commit d62e589
+- [x] 全仓 rustfmt/clippy 告警归零。
+  - commit d62e589 + 162e1f8
+
+- [ ] 审核发现：新增 favicon.svg 未在 VitePress 配置中通过 link 引用，浏览器不会自动加载该 SVG，文档站点因此不显示预期图标（docs/public/favicon.svg:1）
