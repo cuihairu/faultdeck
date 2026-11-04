@@ -245,3 +245,51 @@ fn apply_propagates_non_idempotent_failure() {
     };
     assert!(fw.apply(&injection).is_err());
 }
+
+#[test]
+fn apply_rolls_back_partial_install_on_failure() {
+    use faultdeck_core::{DisconnectSpec, FaultSpec, Injection, Target};
+    use ipnet::IpNet;
+    use std::str::FromStr;
+
+    // The udp rule fails on the second -A of the same port after the tcp rule
+    // already landed. apply() must tear the chain down so no orphaned DROP
+    // rule is left behind for a client that is told the inject failed.
+    let calls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let calls2 = calls.clone();
+    let runner = Arc::new(move |args: &[&str]| -> Result<(), FirewallError> {
+        let joined = args.join(" ");
+        calls2.lock().unwrap().push(joined.clone());
+        if args.first() == Some(&"-C") {
+            return Err(FirewallError::Command(
+                "Bad rule (does a matching rule exist in that chain?)".into(),
+            ));
+        }
+        if args.first() == Some(&"-A") && joined.contains("-p udp") {
+            return Err(FirewallError::Command("simulated udp failure".into()));
+        }
+        Ok(())
+    });
+    let fw = Iptables {
+        dry_run: false,
+        path: None,
+        runner: Some(runner),
+    };
+    let injection = Injection {
+        fault: FaultSpec::Disconnect(DisconnectSpec { all_traffic: false }),
+        target: Target {
+            source: Some(IpNet::from_str("10.0.0.0/8").unwrap()),
+            destination: Some(IpNet::from_str("192.0.2.0/24").unwrap()),
+            destination_port: Some(443),
+        },
+    };
+    assert!(fw.apply(&injection).is_err());
+    let calls = calls.lock().unwrap().clone();
+    // The tcp rule was installed before the failure...
+    assert!(calls
+        .iter()
+        .any(|c| c.contains("-p tcp") && c.contains("-j DROP")));
+    // ...and the partial install was rolled back via the chain teardown.
+    assert!(calls.iter().any(|c| c.starts_with("-F FAULTDECK")));
+    assert!(calls.iter().any(|c| c.starts_with("-X FAULTDECK")));
+}

@@ -157,7 +157,16 @@ impl Iptables {
                 rule.push("-j".into());
                 rule.push("DROP".into());
                 let refs: Vec<&str> = rule.iter().map(|s| s.as_str()).collect();
-                self.run(&refs)?;
+                if let Err(e) = self.run(&refs) {
+                    // A partial install (e.g. the tcp rule landed but the udp
+                    // rule failed) would leave an orphaned DROP rule while the
+                    // caller believes nothing was applied. Tear the whole chain
+                    // down so iptables state matches the error the client sees;
+                    // rollback errors are best-effort (the original failure is
+                    // what the caller should act on).
+                    let _ = self.rollback();
+                    return Err(e);
+                }
             }
         }
         Ok(())

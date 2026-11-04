@@ -31,18 +31,28 @@ pub enum AgentError {
 pub type Result<T> = std::result::Result<T, AgentError>;
 
 /// Constant-time byte equality to avoid timing side channels when comparing
-/// an auth token. The length difference is folded into the accumulator and
-/// the loop runs over the longer slice (missing bytes read as zero), so an
-/// unequal length does not return early and leak the expected length.
+/// an auth token.
+///
+/// `b` is the reference/expected value whose length is fixed by the server;
+/// `a` is the attacker-controlled presented value (both call sites pass the
+/// presented token first and the expected token second). The loop runs
+/// exactly `b.len()` iterations, so execution time is independent of the
+/// presented length; a `max(a.len(), b.len())` bound would let an attacker
+/// infer the expected length from the timing plateau. Missing bytes in `a`
+/// read as zero and every byte of the length difference is folded into the
+/// accumulator, so any length mismatch still compares unequal.
 pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    let n = a.len().max(b.len());
     let len_diff = (a.len() as u64) ^ (b.len() as u64);
-    // Fold every byte of the length difference so a mismatch is reflected in
-    // the result even before the byte loop finishes.
-    let mut diff = (len_diff | (len_diff >> 8) | (len_diff >> 16) | (len_diff >> 32)) as u8;
-    for i in 0..n {
+    // Fold all 8 bytes of the length difference into the accumulator. The
+    // previous `(len_diff | >>8 | >>16 | >>32) as u8` collapsed to zero when
+    // the only set bits were in bytes 3 or 5-7 (e.g. a 16MiB gap), letting an
+    // all-zero long slice compare equal to an empty one.
+    let mut diff = 0u8;
+    for byte in len_diff.to_le_bytes() {
+        diff |= byte;
+    }
+    for (i, &y) in b.iter().enumerate() {
         let x = a.get(i).copied().unwrap_or(0);
-        let y = b.get(i).copied().unwrap_or(0);
         diff |= x ^ y;
     }
     diff == 0

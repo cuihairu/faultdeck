@@ -249,6 +249,20 @@ fn constant_time_eq_matches_only_equal_slices() {
 }
 
 #[test]
+fn constant_time_eq_folds_all_length_bytes() {
+    use faultdeck_agent::constant_time_eq;
+    // The length difference is XORed into a u64; the old fold
+    // `(ld | ld>>8 | ld>>16 | ld>>32) as u8` truncated the top byte, so a
+    // 16MiB gap (0x01000000) folded to zero and an all-zero long slice was
+    // falsely equal to an empty one. Every length byte must contribute.
+    let long = vec![0u8; 16 * 1024 * 1024];
+    assert!(!constant_time_eq(&long, b""));
+    assert!(!constant_time_eq(b"", &long));
+    // A mismatch in a high length byte alone must also be detected.
+    assert!(!constant_time_eq(&long, b"\0"));
+}
+
+#[test]
 fn loopback_bind_detection() {
     use faultdeck_agent::is_loopback_bind;
     assert!(is_loopback_bind("127.0.0.1:7000"));
