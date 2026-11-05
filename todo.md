@@ -133,5 +133,7 @@
   - 修复：todo.md:131 核验范围改为固定端点 `1cd0d488..197024c`；`git log --oneline 1cd0d488..197024c` 仅含 197024c，`git diff --stat 1cd0d488..197024c` 为 todo.md 1 文件 +2 行
 - [x] 审核发现：修复仅将 todo.md:131 的移动引用 HEAD 钉为固定端点，但同段「审核发现」记录的 todo.md:124 仍以移动引用 `fdcbf9f0..HEAD` 为范围锚点（现该范围已含 10 个提交），所命名的「审核记录使用会随提交移动的 HEAD」问题类别仅被部分修复（todo.md:124）
   - 修复：todo.md:124 范围锚点改为固定端点 `fdcbf9f0..f0f554a`（f0f554a 为该「不属实」注记落笔时 HEAD 所在）；`git log --oneline fdcbf9f0..f0f554a` 仅含 a903065、52674cc、570d1fa、85432a3、f0f554a 共 5 个提交，`git diff --stat fdcbf9f0..f0f554a` 为 36 文件 +173/-254，仍为文档/工作流/待办文本变更；`cargo test --workspace` 全绿（netem 8 + adapter 9 + agent 14 + transport 3 + cli 6 + coordinator 10 + report 4 等全部通过）
-
-- [x] 审核发现：将范围固定为 fdcbf9f0..f0f554a 后，该 diff 的 README P3 已将报告集中存档列为已实现，记录仍称此 diff 将其误标为待实现，导致审核依据不准确（todo.md:124）——修复：todo.md:124 改述为 570d1fa 引入误标、f0f554a 修正；`git show 570d1fa:README.md` 显示 archival pending，`git show f0f554a:README.md` 显示 central report archive live；`cargo test --workspace` 全绿；证据 commit f0f554a
+- [x] 审核发现：将范围固定为 fdcbf9f0..f0f554a 后，该 diff 的 README P3 已将报告集中存档列为已实现，记录仍称该 diff 将其误标为待实现，导致审核依据不准确（todo.md:124）
+  - 修复：todo.md:124 改述为 570d1fa 引入误标、f0f554a 修正；`git show 570d1fa:README.md` 显示 archival pending，`git show f0f554a:README.md` 显示 central report archive live；`cargo test --workspace` 全绿；证据 commit f0f554a
+- [x] 审核发现：新增审核记录以单行内联「——修复：」写成，未遵循同节其余修复记录（todo.md:110-135）的两行式「- [x] 审核发现：… / 缩进 修复：…」结构，且 136 行前置空行使该节原本连续的列表断裂（todo.md:137）
+  - 修复：todo.md:137 改述为两行式「- [x] 审核发现：… / 缩进 修复：…」并删除 136 行前置空行；`git diff` 显示该记录由单行内联改为两行式且其后无空行，`awk '/^## 审核发现/{f=1} f&&/^$/{n++} END{print n}' todo.md` 输出 1（仅 113 行标题后分隔空行）；`cargo test --workspace` 全绿（69 passed, 0 failed）；`pnpm docs:build` 通过
