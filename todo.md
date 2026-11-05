@@ -126,3 +126,5 @@
   - 核验：`git log --oneline 570d1fa..f0f554a` 仅含 85432a3（todo 审核记录）与 f0f554a（README P3 措辞修正）；`git diff --stat 570d1fa..f0f554a` 为 3 文件 +3/-2，仅 README.md、README.zh.md、todo.md 文档文本；README.md:66 与 README.zh.md:67 措辞与 crates/coordinator/src/lib.rs:171（store_report）及 lib.rs:179-186（FetchReport）、crates/coordinator/tests/coordinator.rs:48（inject_stores_report_and_fetches）一致
 - [x] 审核发现：本条审核记录标题锚定 570d1fa..f0f554a，但核验正文用移动引用 `HEAD`（现 HEAD=0e5c024），使「仅含 85432a3 与 f0f554a」已不再可复现/不准确（todo.md:126）
   - 修复：todo.md:126 核验正文改为固定端点 `570d1fa..f0f554a`；`git log --oneline 570d1fa..f0f554a` 仅含 85432a3 与 f0f554a，`git diff --stat 570d1fa..f0f554a` 为 3 文件 +3/-2（README.md、README.zh.md、todo.md）
+- [x] 审核发现：本轮 diff 未见问题（0e5c024..1cd0d48）
+  - 核验：`git log --oneline 0e5c024..1cd0d48` 仅含 1cd0d48（docs: pin audit range endpoints）；`git diff --stat 0e5c024..1cd0d48` 为 todo.md 1 文件 +3/-1，仅文档审核记录文本；1cd0d48 为固定核验端点 570d1fa..f0f554a 并新增审核记录，无代码/文档不一致问题
