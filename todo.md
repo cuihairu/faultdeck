@@ -121,7 +121,7 @@
   - 修复：README.md:63 与 README.zh.md:64 改为 explicit rollback，并标注 automatic fault recovery 未实现；驻留依据 crates/netem/src/lib.rs:204
 - [x] 审核发现：英中 README 将 coordinator 多目标中枢标为已实现，但其 inject 仅返回 queued 而未向 agent 下发，无法实际执行多目标实验（README.md:66）
   - 修复：README.md:66 与 README.zh.md:67 改为 coordinator registration only；queued/dispatch 依据 crates/coordinator/src/lib.rs:159-178
-- 审核发现：本轮 diff 未见问题（fdcbf9f0..f0f554a）——不属实：该 diff 实含 README P3 将「报告集中存档」误标为待实现，与 README.md:55 及 crates/coordinator 的 store_report/fetch_report（lib.rs:171,179-186，测试 inject_stores_report_and_fetches 通过）矛盾；已修正 P3 措辞
+- 审核发现：本轮 diff 未见问题（fdcbf9f0..f0f554a）——不属实：范围内 570d1fa 曾将 README P3 的「报告集中存档」误标为待实现，与 README.md:55 及 crates/coordinator 的 store_report/fetch_report（lib.rs:171,179-186，测试 inject_stores_report_and_fetches 通过）矛盾；f0f554a 已在同一范围内修正为已实现
 - [x] 审核发现：本轮 diff 未见问题（570d1fa..f0f554a）
   - 核验：`git log --oneline 570d1fa..f0f554a` 仅含 85432a3（todo 审核记录）与 f0f554a（README P3 措辞修正）；`git diff --stat 570d1fa..f0f554a` 为 3 文件 +3/-2，仅 README.md、README.zh.md、todo.md 文档文本；README.md:66 与 README.zh.md:67 措辞与 crates/coordinator/src/lib.rs:171（store_report）及 lib.rs:179-186（FetchReport）、crates/coordinator/tests/coordinator.rs:48（inject_stores_report_and_fetches）一致
 - [x] 审核发现：本条审核记录标题锚定 570d1fa..f0f554a，但核验正文用移动引用 `HEAD`（现 HEAD=0e5c024），使「仅含 85432a3 与 f0f554a」已不再可复现/不准确（todo.md:126）
@@ -133,3 +133,5 @@
   - 修复：todo.md:131 核验范围改为固定端点 `1cd0d488..197024c`；`git log --oneline 1cd0d488..197024c` 仅含 197024c，`git diff --stat 1cd0d488..197024c` 为 todo.md 1 文件 +2 行
 - [x] 审核发现：修复仅将 todo.md:131 的移动引用 HEAD 钉为固定端点，但同段「审核发现」记录的 todo.md:124 仍以移动引用 `fdcbf9f0..HEAD` 为范围锚点（现该范围已含 10 个提交），所命名的「审核记录使用会随提交移动的 HEAD」问题类别仅被部分修复（todo.md:124）
   - 修复：todo.md:124 范围锚点改为固定端点 `fdcbf9f0..f0f554a`（f0f554a 为该「不属实」注记落笔时 HEAD 所在）；`git log --oneline fdcbf9f0..f0f554a` 仅含 a903065、52674cc、570d1fa、85432a3、f0f554a 共 5 个提交，`git diff --stat fdcbf9f0..f0f554a` 为 36 文件 +173/-254，仍为文档/工作流/待办文本变更；`cargo test --workspace` 全绿（netem 8 + adapter 9 + agent 14 + transport 3 + cli 6 + coordinator 10 + report 4 等全部通过）
+
+- [x] 审核发现：将范围固定为 fdcbf9f0..f0f554a 后，该 diff 的 README P3 已将报告集中存档列为已实现，记录仍称此 diff 将其误标为待实现，导致审核依据不准确（todo.md:124）——修复：todo.md:124 改述为 570d1fa 引入误标、f0f554a 修正；`git show 570d1fa:README.md` 显示 archival pending，`git show f0f554a:README.md` 显示 central report archive live；`cargo test --workspace` 全绿；证据 commit f0f554a
