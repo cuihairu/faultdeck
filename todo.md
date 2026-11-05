@@ -122,3 +122,5 @@
 - [x] 审核发现：英中 README 将 coordinator 多目标中枢标为已实现，但其 inject 仅返回 queued 而未向 agent 下发，无法实际执行多目标实验（README.md:66）
   - 修复：README.md:66 与 README.zh.md:67 改为 coordinator registration only；queued/dispatch 依据 crates/coordinator/src/lib.rs:159-178
 - 审核发现：本轮 diff 未见问题（fdcbf9f0..HEAD）——不属实：该 diff 实含 README P3 将「报告集中存档」误标为待实现，与 README.md:55 及 crates/coordinator 的 store_report/fetch_report（lib.rs:171,179-186，测试 inject_stores_report_and_fetches 通过）矛盾；已修正 P3 措辞
+- [x] 审核发现：本轮 diff 未见问题（570d1fa..f0f554a）
+  - 核验：`git log --oneline 570d1fa..HEAD` 仅含 85432a3（todo 审核记录）与 f0f554a（README P3 措辞修正）；`git diff --stat 570d1fa..HEAD` 为 3 文件 +3/-2，仅 README.md、README.zh.md、todo.md 文档文本；README.md:66 与 README.zh.md:67 措辞与 crates/coordinator/src/lib.rs:171（store_report）及 lib.rs:179-186（FetchReport）、crates/coordinator/tests/coordinator.rs:48（inject_stores_report_and_fetches）一致
