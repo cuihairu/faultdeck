@@ -52,7 +52,7 @@ The agent dials out and reverse-connects; a long-lived tunnel (auto-reconnect) c
 
 ![Mode C](docs/public/mode-c-coordinator.svg)
 
-The coordinator sits where both sides can reach; agents register with heartbeats, controllers attach and launch experiments; commands are routed and reports archived centrally; solves double-NAT and enables a fleet view; in our fleet it can run on top of the meshlet virtual network.
+The coordinator sits where both sides can reach; agents register with heartbeats, controllers attach and submit experiments in queued mode, and reports are archived centrally; live command dispatch to agents is not wired yet; it solves double-NAT and enables a fleet view; in our fleet it can run on top of the meshlet virtual network.
 
 > All three modes share one protocol (command/event/log/report streams); only "who listens, who dials, and whether traffic routes through a coordinator" differs.
 

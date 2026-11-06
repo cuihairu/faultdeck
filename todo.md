@@ -5,13 +5,13 @@
 ## 里程碑
 
 - [x] FD-P1-4 [P1] faultdeck-agent 常驻被测端:监听本地端口收控制端指令,本机执行 tc/netem 与 iptables 故障;安全守卫=管理网段白名单+仅绑回环或配对 token;CLI 增 remote 子命令。
-  - commit daed723;测试 agent 14 + transport 3 + cli 6;跨机 Windows→Linux 三场景实测 BLOCKED(无设备)
+  - commit daed723;测试 agent 14 + transport 3 + cli 6;跨机 Windows→Linux 三场景实测 BLOCKED(无设备);复核 2026-11-06：仍缺 Windows 控制机与 Linux 被测机
 - [x] FD-ARCH-1 [P1] agent 双向连接:Mode A=agent 监听,Mode B=agent 反向拨号(断线重连),单条长连承载指令/事件/日志/报告,双向 token。
-  - commit daed723;测试 transport 3;跨机 NAT 实测 BLOCKED
+  - commit daed723;测试 transport 3;跨机 NAT 实测 BLOCKED;复核 2026-11-06：仍缺跨 NAT 双机网络环境
 - [x] FD-REPORT-1 [P1] 报告体系:场景 JSON+SHA256 哈希、RunReport 时间线/恢复证据/外部断言/重现命令、JSON+HTML 双格式、compare_runs 历史 diff。
   - commit d7cda7d;测试 report 4
 - [x] FD-ARCH-2 [P1] Coordinator 多目标中枢:agent 注册/心跳/在线状态,控制端发起实验,指令路由与报告集中存档,解决双向 NAT。
-  - commit e41d3f5;测试 coordinator 10;跨机 NAT/mTLS 实测 BLOCKED
+  - commit e41d3f5;测试 coordinator 10;跨机 NAT/mTLS 实测 BLOCKED;复核 2026-11-06：仍缺跨 NAT 双机环境与 mTLS 对端/证书
 
 ## 评审修复 2026-11-03(netem)
 
@@ -120,7 +120,7 @@
 - [x] 审核发现：英中 README 将自动恢复回滚标为已实现，但故障施加后会持续驻留且需要调用方显式 rollback，误导用户认为故障会自动解除（README.md:63）
   - 修复：README.md:63 与 README.zh.md:64 改为 explicit rollback，并标注 automatic fault recovery 未实现；驻留依据 crates/netem/src/lib.rs:204
 - [x] 审核发现：英中 README 将 coordinator 多目标中枢标为已实现，但其 inject 仅返回 queued 而未向 agent 下发，无法实际执行多目标实验（README.md:66）
-  - 修复：README.md:66 与 README.zh.md:67 改为 coordinator registration only；queued/dispatch 依据 crates/coordinator/src/lib.rs:159-178
+- 修复：README.md:66 与 README.zh.md:67 改为 coordinator registration only；README.md:55 与 README.zh.md:56 的 Mode C 文案同步改为「仅入队、在线分发未接线」；queued/dispatch 依据 crates/coordinator/src/lib.rs:159-178；cargo test --workspace 全绿（69 passed, 0 failed）；pnpm docs:build 通过
 - 审核发现：本轮 diff 未见问题（fdcbf9f0..f0f554a）——不属实：范围内 570d1fa 曾将 README P3 的「报告集中存档」误标为待实现，与 README.md:55 及 crates/coordinator 的 store_report/fetch_report（lib.rs:171,179-186，测试 inject_stores_report_and_fetches 通过）矛盾；f0f554a 已在同一范围内修正为已实现
 - [x] 审核发现：本轮 diff 未见问题（570d1fa..f0f554a）
   - 核验：`git log --oneline 570d1fa..f0f554a` 仅含 85432a3（todo 审核记录）与 f0f554a（README P3 措辞修正）；`git diff --stat 570d1fa..f0f554a` 为 3 文件 +3/-2，仅 README.md、README.zh.md、todo.md 文档文本；README.md:66 与 README.zh.md:67 措辞与 crates/coordinator/src/lib.rs:171（store_report）及 lib.rs:179-186（FetchReport）、crates/coordinator/tests/coordinator.rs:48（inject_stores_report_and_fetches）一致
@@ -139,3 +139,5 @@
   - 修复：todo.md:137 改述为两行式「- [x] 审核发现：… / 缩进 修复：…」并删除 136 行前置空行；`git diff` 显示该记录由单行内联改为两行式且其后无空行，`awk '/^## 审核发现/{f=1} f&&/^$/{n++} END{print n}' todo.md` 输出 1（仅 113 行标题后分隔空行）；`cargo test --workspace` 全绿（69 passed, 0 failed）；`pnpm docs:build` 通过
 - [x] 审核发现：本轮 diff 未见问题（6b8e7722..b22ef71）
   - 核验：2026-11-06 `git log --oneline 6b8e7722..b22ef71` 仅含 b22ef71（todo 审核记录格式归一化），`git diff --stat 6b8e7722..b22ef71` 仅 todo.md +4/-2；`cargo test --workspace` 全绿（69 passed, 0 failed），`pnpm docs:build` 通过
+- [x] 审核发现：本轮 diff 未见问题（b22ef710..ea31527）
+  - 核验：2026-11-06 `git log --oneline b22ef710..ea31527` 仅含 ea31527（todo 审核记录），`git diff --stat b22ef710..ea31527` 为 todo.md +2；`cargo test --workspace` 全绿（69 passed, 0 failed），`pnpm docs:build` 通过；commit ea31527
