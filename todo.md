@@ -144,4 +144,4 @@
 - [x] 审核发现：本轮 diff 未见问题（b22ef710..ea31527）
   - 核验：2026-11-06 `git log --oneline b22ef710..ea31527` 仅含 ea31527（todo 审核记录），`git diff --stat b22ef710..ea31527` 为 todo.md +2；`cargo test --workspace` 全绿（69 passed, 0 failed），`pnpm docs:build` 通过；commit ea31527
 - [x] 审核发现：里程碑 FD-ARCH-2 标记 [x] 已完成但其需求含「指令路由」，而本 diff 与 crates/coordinator/src/lib.rs:159-178 表明在线指令分发尚未接线（inject/rollback 仅入队返回 queued，routes 字段未用于分发），且本 diff 在 todo.md:14 的复核注记只提缺跨 NAT/mTLS 测试环境、未提缺分发功能，完成状态与实际情况不符（todo.md:13）
-  - 修复：todo.md:13 FD-ARCH-2 范围改述为已完成部分(注册/心跳/在线、入队实验、报告存档、双 NAT)，并新增未勾项 FD-ARCH-2-DISPATCH 注明在线分发未接线(lib.rs:69 routes 未用、lib.rs:173,177 仅返回 queued)，todo.md:14 复核注记补「在线指令分发未接线」；cargo test --workspace 全绿；证据 commit
+  - 修复：todo.md:13 FD-ARCH-2 范围改述为已完成部分(注册/心跳/在线、入队实验、报告存档、双 NAT)，并新增未勾项 FD-ARCH-2-DISPATCH 注明在线分发未接线(lib.rs:69 routes 未用、lib.rs:173,177 仅返回 queued)，todo.md:14 复核注记补「在线指令分发未接线」；cargo test --workspace 全绿（69 passed, 0 failed）；证据 commit 02ac7eb
