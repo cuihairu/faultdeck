@@ -137,3 +137,5 @@
   - 修复：todo.md:124 改述为 570d1fa 引入误标、f0f554a 修正；`git show 570d1fa:README.md` 显示 archival pending，`git show f0f554a:README.md` 显示 central report archive live；`cargo test --workspace` 全绿；证据 commit f0f554a
 - [x] 审核发现：新增审核记录以单行内联「——修复：」写成，未遵循同节其余修复记录（todo.md:110-135）的两行式「- [x] 审核发现：… / 缩进 修复：…」结构，且 136 行前置空行使该节原本连续的列表断裂（todo.md:137）
   - 修复：todo.md:137 改述为两行式「- [x] 审核发现：… / 缩进 修复：…」并删除 136 行前置空行；`git diff` 显示该记录由单行内联改为两行式且其后无空行，`awk '/^## 审核发现/{f=1} f&&/^$/{n++} END{print n}' todo.md` 输出 1（仅 113 行标题后分隔空行）；`cargo test --workspace` 全绿（69 passed, 0 failed）；`pnpm docs:build` 通过
+- [x] 审核发现：本轮 diff 未见问题（6b8e7722..b22ef71）
+  - 核验：2026-11-06 `git log --oneline 6b8e7722..b22ef71` 仅含 b22ef71（todo 审核记录格式归一化），`git diff --stat 6b8e7722..b22ef71` 仅 todo.md +4/-2；`cargo test --workspace` 全绿（69 passed, 0 failed），`pnpm docs:build` 通过
