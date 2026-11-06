@@ -10,8 +10,10 @@
   - commit daed723;测试 transport 3;跨机 NAT 实测 BLOCKED;复核 2026-11-06：仍缺跨 NAT 双机网络环境
 - [x] FD-REPORT-1 [P1] 报告体系:场景 JSON+SHA256 哈希、RunReport 时间线/恢复证据/外部断言/重现命令、JSON+HTML 双格式、compare_runs 历史 diff。
   - commit d7cda7d;测试 report 4
-- [x] FD-ARCH-2 [P1] Coordinator 多目标中枢:agent 注册/心跳/在线状态,控制端发起实验,指令路由与报告集中存档,解决双向 NAT。
-  - commit e41d3f5;测试 coordinator 10;跨机 NAT/mTLS 实测 BLOCKED;复核 2026-11-06：仍缺跨 NAT 双机环境与 mTLS 对端/证书
+- [x] FD-ARCH-2 [P1] Coordinator 多目标中枢:agent 注册/心跳/在线状态,控制端发起实验(入队),报告集中存档,解决双向 NAT。
+  - commit e41d3f5;测试 coordinator 10;跨机 NAT/mTLS 实测 BLOCKED;复核 2026-11-06：仍缺跨 NAT 双机环境与 mTLS 对端/证书;在线指令分发未接线(见 FD-ARCH-2-DISPATCH)
+- [ ] FD-ARCH-2-DISPATCH [P1] coordinator 在线指令分发:向已注册 agent 的活动连接实际下发 inject/rollback 并回传结果。
+  - BLOCKED;复核 2026-11-06：缺分发接线实现(crates/coordinator/src/lib.rs:69 routes 未用、lib.rs:173,177 仅返回 queued)与跨 NAT 双机验证环境
 
 ## 评审修复 2026-11-03(netem)
 
@@ -141,3 +143,5 @@
   - 核验：2026-11-06 `git log --oneline 6b8e7722..b22ef71` 仅含 b22ef71（todo 审核记录格式归一化），`git diff --stat 6b8e7722..b22ef71` 仅 todo.md +4/-2；`cargo test --workspace` 全绿（69 passed, 0 failed），`pnpm docs:build` 通过
 - [x] 审核发现：本轮 diff 未见问题（b22ef710..ea31527）
   - 核验：2026-11-06 `git log --oneline b22ef710..ea31527` 仅含 ea31527（todo 审核记录），`git diff --stat b22ef710..ea31527` 为 todo.md +2；`cargo test --workspace` 全绿（69 passed, 0 failed），`pnpm docs:build` 通过；commit ea31527
+- [x] 审核发现：里程碑 FD-ARCH-2 标记 [x] 已完成但其需求含「指令路由」，而本 diff 与 crates/coordinator/src/lib.rs:159-178 表明在线指令分发尚未接线（inject/rollback 仅入队返回 queued，routes 字段未用于分发），且本 diff 在 todo.md:14 的复核注记只提缺跨 NAT/mTLS 测试环境、未提缺分发功能，完成状态与实际情况不符（todo.md:13）
+  - 修复：todo.md:13 FD-ARCH-2 范围改述为已完成部分(注册/心跳/在线、入队实验、报告存档、双 NAT)，并新增未勾项 FD-ARCH-2-DISPATCH 注明在线分发未接线(lib.rs:69 routes 未用、lib.rs:173,177 仅返回 queued)，todo.md:14 复核注记补「在线指令分发未接线」；cargo test --workspace 全绿；证据 commit
