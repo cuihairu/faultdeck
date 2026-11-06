@@ -5,7 +5,7 @@
 ## 里程碑
 
 - [x] FD-P1-4 [P1] faultdeck-agent 常驻被测端:监听本地端口收控制端指令,本机执行 tc/netem 与 iptables 故障;安全守卫=管理网段白名单+仅绑回环或配对 token;CLI 增 remote 子命令。
-  - commit daed723;测试 agent 14 + transport 3 + cli 6;跨机 Windows→Linux 三场景实测 BLOCKED(无设备);复核 2026-11-06：仍缺 Windows 控制机与 Linux 被测机
+  - commit daed723;测试 agent 14 + transport 3 + cli 6;跨机 Windows→Linux 三场景实测：Windows 控制机在位（openclaw 10.240.0.3 / imac 192.168.5.117 / work-win11 10.240.0.5），Linux 被测机=本机 coding VM；三场景实测待在其上执行（2026-11-07 复核，原「无设备」口径作废）
 - [x] FD-ARCH-1 [P1] agent 双向连接:Mode A=agent 监听,Mode B=agent 反向拨号(断线重连),单条长连承载指令/事件/日志/报告,双向 token。
   - commit daed723;测试 transport 3;跨机 NAT 实测 BLOCKED;复核 2026-11-06：仍缺跨 NAT 双机网络环境
 - [x] FD-REPORT-1 [P1] 报告体系:场景 JSON+SHA256 哈希、RunReport 时间线/恢复证据/外部断言/重现命令、JSON+HTML 双格式、compare_runs 历史 diff。
@@ -145,3 +145,6 @@
   - 核验：2026-11-06 `git log --oneline b22ef710..ea31527` 仅含 ea31527（todo 审核记录），`git diff --stat b22ef710..ea31527` 为 todo.md +2；`cargo test --workspace` 全绿（69 passed, 0 failed），`pnpm docs:build` 通过；commit ea31527
 - [x] 审核发现：里程碑 FD-ARCH-2 标记 [x] 已完成但其需求含「指令路由」，而本 diff 与 crates/coordinator/src/lib.rs:159-178 表明在线指令分发尚未接线（inject/rollback 仅入队返回 queued，routes 字段未用于分发），且本 diff 在 todo.md:14 的复核注记只提缺跨 NAT/mTLS 测试环境、未提缺分发功能，完成状态与实际情况不符（todo.md:13）
   - 修复：todo.md:13 FD-ARCH-2 范围改述为已完成部分(注册/心跳/在线、入队实验、报告存档、双 NAT)，并新增未勾项 FD-ARCH-2-DISPATCH 注明在线分发未接线(lib.rs:69 routes 未用、lib.rs:173,177 仅返回 queued)，todo.md:14 复核注记补「在线指令分发未接线」；cargo test --workspace 全绿（69 passed, 0 failed）；证据 commit 02ac7eb
+- [ ] 审核发现：FD-ARCH-2 将实验入队标为已完成，但 inject 只创建报告并返回 queued，未保存待执行指令，rollback 也未入队（todo.md:13）
+- [ ] 审核发现：FD-ARCH-2 将解决双向 NAT 标为已完成，但协调器未将控制指令转发到 agent，无法经中枢对双向 NAT 后的目标执行实验（todo.md:13）
+- [ ] 审核发现：FD-ARCH-2 将在线状态标为已完成，但协调器只记录心跳时间并列出全部已注册 agent，未判断连接或心跳过期状态，离线 agent 仍会出现在列表中（todo.md:13）
