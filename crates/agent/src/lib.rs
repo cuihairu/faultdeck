@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod firewall;
+pub mod link;
 pub mod transport;
 pub const MAX_INJECTION_BYTES: usize = 64 * 1024;
 

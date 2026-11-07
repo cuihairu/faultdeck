@@ -4,6 +4,8 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
+use faultdeck_agent::transport::{read_frame, send_frame};
+use faultdeck_coordinator::{AgentCommand, AgentResponse, WireMessage};
 use faultdeck_core::{FaultSpec, Injection, LatencySpec, LossSpec, Target};
 use faultdeck_report::{RunReport, Scenario};
 use ipnet::IpNet;
@@ -19,12 +21,19 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Remote(Remote),
+    Hub(Hub),
 }
 
 #[derive(Parser)]
 struct Remote {
     #[command(subcommand)]
     sub: RemoteSub,
+}
+
+#[derive(Parser)]
+struct Hub {
+    #[command(subcommand)]
+    sub: HubSub,
 }
 
 #[derive(Subcommand)]
@@ -71,11 +80,133 @@ enum RemoteSub {
     },
 }
 
+#[derive(Subcommand)]
+enum HubSub {
+    List {
+        #[arg(long)]
+        host: String,
+        #[arg(long, default_value_t = 7001)]
+        port: u16,
+        #[arg(long, allow_hyphen_values = true)]
+        token: Option<String>,
+    },
+    Inject {
+        #[arg(long)]
+        host: String,
+        #[arg(long, default_value_t = 7001)]
+        port: u16,
+        #[arg(long, allow_hyphen_values = true)]
+        token: Option<String>,
+        #[arg(long)]
+        agent: String,
+        #[arg(long, value_enum)]
+        fault: FaultKind,
+        #[arg(long)]
+        destination: String,
+        #[arg(long)]
+        port_spec: Option<u16>,
+        #[arg(long)]
+        milliseconds: Option<u64>,
+        #[arg(long)]
+        percent: Option<f64>,
+        #[arg(long)]
+        scenario_name: Option<String>,
+    },
+    Rollback {
+        #[arg(long)]
+        host: String,
+        #[arg(long, default_value_t = 7001)]
+        port: u16,
+        #[arg(long, allow_hyphen_values = true)]
+        token: Option<String>,
+        #[arg(long)]
+        agent: String,
+    },
+}
+
 #[derive(Clone, Copy, clap::ValueEnum)]
 enum FaultKind {
     Latency,
     Loss,
     Disconnect,
+}
+
+/// Build an injection from shared CLI fault flags (used by both `remote` and
+/// `hub` subcommands so the hub path reuses the exact same semantics).
+fn build_injection(
+    fault: FaultKind,
+    destination: &str,
+    port_spec: Option<u16>,
+    milliseconds: Option<u64>,
+    percent: Option<f64>,
+) -> anyhow::Result<Injection> {
+    let target = match port_spec {
+        Some(p) => Target::destination_port(IpNet::from_str(destination)?, p),
+        None => Target::destination(IpNet::from_str(destination)?),
+    };
+    let fault_spec = match fault {
+        FaultKind::Latency => FaultSpec::Latency(LatencySpec {
+            milliseconds: milliseconds
+                .ok_or_else(|| anyhow::anyhow!("--milliseconds required for latency"))?,
+        }),
+        FaultKind::Loss => FaultSpec::Loss(LossSpec {
+            percent: percent.ok_or_else(|| anyhow::anyhow!("--percent required for loss"))?,
+        }),
+        FaultKind::Disconnect => FaultSpec::Disconnect(faultdeck_core::DisconnectSpec {
+            all_traffic: port_spec.is_none(),
+        }),
+    };
+    Ok(Injection {
+        fault: fault_spec,
+        target,
+    })
+}
+
+fn hub_send(
+    host: &str,
+    port: u16,
+    token: Option<&str>,
+    command: AgentCommand,
+) -> anyhow::Result<AgentResponse> {
+    let stream = TcpStream::connect((host, port))?;
+    let timeout_secs: u64 = std::env::var("FAULTDECK_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(5);
+    stream.set_read_timeout(Some(Duration::from_secs(timeout_secs)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(timeout_secs)))?;
+    let mut writer = std::io::BufWriter::new(stream.try_clone()?);
+    send_frame(
+        &mut writer,
+        &WireMessage {
+            token: token.map(|t| t.to_string()),
+            command,
+        },
+    )?;
+    let mut reader = std::io::BufReader::new(stream);
+    read_frame::<_, AgentResponse>(&mut reader).map_err(|e| anyhow::anyhow!(e.to_string()))
+}
+
+fn print_hub_response(response: AgentResponse) -> anyhow::Result<()> {
+    match response {
+        AgentResponse::Ok { message } => println!("{message}"),
+        AgentResponse::Error { message } => anyhow::bail!(message),
+        AgentResponse::Registered { id } => println!("registered {id}"),
+        AgentResponse::Queued { agent_id, pending } => {
+            println!("queued for {agent_id} (pending {pending})")
+        }
+        AgentResponse::Agents { agents, available } => {
+            for a in &agents {
+                println!(
+                    "{} online={} capabilities={:?} last_seen_ms={}",
+                    a.id, a.online, a.capabilities, a.last_seen_ms
+                );
+            }
+            println!("available: {available:?}");
+        }
+        AgentResponse::Report { .. } => anyhow::bail!("unexpected report response"),
+    }
+    Ok(())
 }
 
 #[derive(Serialize, Deserialize)]
@@ -165,30 +296,8 @@ fn main() -> anyhow::Result<()> {
                 report_json,
                 report_html,
             } => {
-                let target = match port_spec {
-                    Some(p) => Target::destination_port(IpNet::from_str(&destination)?, p),
-                    None => Target::destination(IpNet::from_str(&destination)?),
-                };
-                let fault_spec = match fault {
-                    FaultKind::Latency => FaultSpec::Latency(LatencySpec {
-                        milliseconds: milliseconds.ok_or_else(|| {
-                            anyhow::anyhow!("--milliseconds required for latency")
-                        })?,
-                    }),
-                    FaultKind::Loss => FaultSpec::Loss(LossSpec {
-                        percent: percent
-                            .ok_or_else(|| anyhow::anyhow!("--percent required for loss"))?,
-                    }),
-                    FaultKind::Disconnect => {
-                        FaultSpec::Disconnect(faultdeck_core::DisconnectSpec {
-                            all_traffic: port_spec.is_none(),
-                        })
-                    }
-                };
-                let injection = Injection {
-                    fault: fault_spec,
-                    target,
-                };
+                let injection =
+                    build_injection(fault, &destination, port_spec, milliseconds, percent)?;
                 let msg = send(
                     &host,
                     port,
@@ -239,6 +348,52 @@ fn main() -> anyhow::Result<()> {
             RemoteSub::Rollback { host, port, token } => {
                 let msg = send(&host, port, token.as_deref(), &WireRequest::Rollback)?;
                 println!("{msg}");
+            }
+        },
+        Command::Hub(hub) => match hub.sub {
+            HubSub::List { host, port, token } => {
+                let resp = hub_send(&host, port, token.as_deref(), AgentCommand::ListAgents)?;
+                print_hub_response(resp)?;
+            }
+            HubSub::Inject {
+                host,
+                port,
+                token,
+                agent,
+                fault,
+                destination,
+                port_spec,
+                milliseconds,
+                percent,
+                scenario_name,
+            } => {
+                let injection =
+                    build_injection(fault, &destination, port_spec, milliseconds, percent)?;
+                let resp = hub_send(
+                    &host,
+                    port,
+                    token.as_deref(),
+                    AgentCommand::Inject {
+                        id: agent,
+                        injection,
+                    },
+                )?;
+                print_hub_response(resp)?;
+                let _ = scenario_name; // hub path archives reports coordinator-side
+            }
+            HubSub::Rollback {
+                host,
+                port,
+                token,
+                agent,
+            } => {
+                let resp = hub_send(
+                    &host,
+                    port,
+                    token.as_deref(),
+                    AgentCommand::Rollback { id: agent },
+                )?;
+                print_hub_response(resp)?;
             }
         },
     }

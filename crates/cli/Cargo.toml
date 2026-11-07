@@ -12,6 +12,7 @@ path = "src/main.rs"
 anyhow.workspace = true
 clap = { workspace = true }
 faultdeck-agent = { path = "../agent" }
+faultdeck-coordinator = { path = "../coordinator" }
 faultdeck-core = { path = "../core" }
 faultdeck-netem = { path = "../netem" }
 faultdeck-report = { path = "../report" }
