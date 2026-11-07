@@ -23,7 +23,7 @@ This produces three binaries:
 |---|---|
 | `faultdeck-agent` | resident daemon on the target host; applies faults |
 | `faultdeck` | CLI you run locally; talks to the agent over TCP |
-| `faultdeck-coordinator` | optional multi-target hub; agent registry and report archive |
+| `faultdeck-coordinator` | optional multi-target hub; agent registry, report archive, live dispatch over agent links |
 
 ## 2. Start an agent
 

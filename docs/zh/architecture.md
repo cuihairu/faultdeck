@@ -9,9 +9,9 @@ FaultDeck 是一个 Rust workspace。当前实现包含 **6 个已构建 crate**
 | `faultdeck-core` | — | 共享模型:`FaultSpec`(latency / loss / disconnect)、`Target`、`Injection`、内在校验(`validate_injection`)、管理网段重叠检查 |
 | `faultdeck-netem` | — | `tc` 适配器:规划并执行 `tc qdisc`/`filter` 命令,preflight 检查,回滚,`dry_run` 执行器 |
 | `faultdeck-agent` | `faultdeck-agent` | 常驻 TCP 守护进程:token 鉴权、请求处理、iptables 防火墙(disconnect)、单故障状态 |
-| `faultdeck-coordinator` | `faultdeck-coordinator` | 多目标中枢:agent 注册表(register/heartbeat/list)、报告归档、排队中的 inject/rollback 命令 |
+| `faultdeck-coordinator` | `faultdeck-coordinator` | 多目标中枢:agent 注册表(register/heartbeat/list 含在线状态)、报告归档、经 agent 反向链路在线下发 inject/rollback,离线 agent 指令入队 |
 | `faultdeck-report` | — | `Scenario`、`RunReport`(JSON/HTML)、SHA-256 场景哈希、`compare_runs` 历史 diff |
-| `faultdeck-cli` | `faultdeck` | CLI 入口:`faultdeck remote ping / inject / rollback` |
+| `faultdeck-cli` | `faultdeck` | CLI 入口:`faultdeck remote ping / inject / rollback`(直连 agent)与 `faultdeck hub list / inject / rollback`(经 coordinator) |
 | `faultdeck-protocol` | — | *占位,不在 workspace 中* |
 
 ## 交互总览
@@ -28,10 +28,11 @@ FaultDeck 是一个 Rust workspace。当前实现包含 **6 个已构建 crate**
 
  faultdeck-coordinator(默认 :7001)
  ┌────────────────────────────────────────────┐
- │ 注册表: agents / reports / routes           │◀── 换行分帧 JSON(多消息长连接,
+ │ 注册表: agents / reports / links / queues   │◀── 换行分帧 JSON(多消息长连接,
  │ AgentCommand: register, heartbeat,         │    线程化 accept)
- │   inject, rollback, fetch_report,          │
- │   list_agents                              │
+ │   inject, rollback, fetch_report,          │◀── agent 反向链路:先 RegisterEnvelope,
+ │   list_agents                              │    再 LinkMessage::Dispatch → Result /
+ │                                            │    Heartbeat 同链路往返
  └────────────────────────────────────────────┘
 ```
 
@@ -45,14 +46,14 @@ FaultDeck 是一个 Rust workspace。当前实现包含 **6 个已构建 crate**
 
 ## 线协议(coordinator)
 
-长连接,双向按行分帧的 JSON(`faultdeck-agent::transport`)。标签枚举:
+长连接,双向按行分帧的 JSON(`faultdeck-agent::transport`)。同一监听端口承载两种会话,按首帧区分:
 
-- `AgentCommand`:`register` | `heartbeat` | `inject` | `rollback` | `fetch_report` | `list_agents`
-- `AgentResponse`:`ok` | `error` | `registered` | `agents` | `report`
+- **控制端会话** —— 每条命令一个 `WireMessage` 信封。`AgentCommand`:`register` | `heartbeat` | `inject` | `rollback` | `fetch_report` | `list_agents`;`AgentResponse`:`ok` | `error` | `registered` | `queued` | `agents` | `report`。
+- **Agent 链路** —— agent 主动出站拨号 coordinator(可穿双向 NAT),首帧发 `RegisterEnvelope`(`crates/agent/src/link.rs:46`);此后 coordinator 沿同一条连接写 `LinkMessage::Dispatch`,agent 以 `LinkMessage::Result` 应答并周期发送 `LinkMessage::Heartbeat`。
 
-状态保存在 `Mutex<CoordinatorState>`:`agents`、`reports` 为 `BTreeMap`,另有 `routes` 映射。
+状态保存在 `Mutex<CoordinatorState>`:`agents`、`reports`、`links`(存活反向连接)、每 agent 的 `queues` 均为 `BTreeMap`。
 
-**实现状态:** coordinator 的 `inject`/`rollback` 目前只是**入队**(响应为 `queued for {id}`,并按场景哈希归档一份报告桩)。向在线 agent 连接的分发尚未接线;`register`/`heartbeat`/`list_agents`/`fetch_report` 在进程内已完整可用。
+**实现状态:** coordinator 的 `inject`/`rollback` 先校验、归档报告桩,然后**真实下发** —— 存活链路立即收到指令,agent 的执行结果回传给等待中的控制端(受 `DEFAULT_DISPATCH_TIMEOUT` 5 s 约束)并合入归档报告;agent 离线时指令持久入队,在其下次注册时补发。`list_agents` 依据链路存活或心跳新鲜度(`HEARTBEAT_TIMEOUT_MS` 30 s)标注每项 `AgentIdentity.online`,离线 agent 从 `available` 中剔除。
 
 ## netem 适配器的失败处理
 
@@ -82,15 +83,15 @@ disconnect 故障完全绕过 `tc` —— 见 [Netem 故障](/zh/netem-faults#di
 
 ### 4. 线传输与拓扑层
 
-`crates/agent/src/transport.rs` 拥有带界限的 NDJSON 分帧、Mode A 监听/接受和 Mode B 反向连接(`crates/agent/src/transport.rs:56`、`crates/agent/src/transport.rs:94`、`crates/agent/src/transport.rs:118`)。除已接受 socket 外无状态。分帧 schema 是通用 `send_frame`/`read_frame`(`crates/agent/src/transport.rs:57`、`crates/agent/src/transport.rs:65`);拓扑文案在 [Agents](/zh/remote-agents),载荷类型分属 agent 与 coordinator 层,`crates/protocol/src` 为空目录。
+`crates/agent/src/transport.rs` 拥有带界限的 NDJSON 分帧、Mode A 监听/接受和 Mode B 反向连接(`crates/agent/src/transport.rs:56`、`crates/agent/src/transport.rs:94`、`crates/agent/src/transport.rs:118`)。除已接受 socket 外无状态。分帧 schema 是通用 `send_frame`/`read_frame`(`crates/agent/src/transport.rs:57`、`crates/agent/src/transport.rs:65`)。在此分帧之上,`crates/agent/src/link.rs` 实现可用的 Mode B 链路会话 —— 注册信封、心跳线程、分发泵,以及可重连的 `run_link` 循环(`crates/agent/src/link.rs:77`、`crates/agent/src/link.rs:140`、`crates/agent/src/link.rs:184`)。拓扑文案在 [Agents](/zh/remote-agents),载荷类型分属 agent 与 coordinator 层,`crates/protocol/src` 为空目录。
 
 ### 5. 用户入口与报告物化层
 
-`crates/cli/src/main.rs` 把 `remote ping/inject/rollback` 参数转换为共享 `Injection`,执行一次有超时的 TCP 交互,按需物化 JSON/HTML 报告并生成回放命令(`crates/cli/src/main.rs:96`、`crates/cli/src/main.rs:147`、`crates/cli/src/main.rs:200`、`crates/cli/src/main.rs:233`)。它没有服务端状态;文件输出由调用参数指定。命令 schema 是 `crates/cli/src/main.rs:12` 的 clap 树,唯一环境输入是 `FAULTDECK_TIMEOUT_SECS`(`crates/cli/src/main.rs:105`),用户旗标记录在[配置](/zh/configuration)。
+`crates/cli/src/main.rs` 把 `remote ping/inject/rollback` 与 `hub list/inject/rollback` 参数转换为共享 `Injection`,与 agent 或 coordinator 执行有超时的 TCP 交互,按需物化 JSON/HTML 报告并生成回放命令(`crates/cli/src/main.rs:136`、`crates/cli/src/main.rs:165`、`crates/cli/src/main.rs:227`、`crates/cli/src/main.rs:341`)。它没有服务端状态;文件输出由调用参数指定。命令 schema 是 `crates/cli/src/main.rs:22` 的 clap 树,唯一环境输入是 `FAULTDECK_TIMEOUT_SECS`(`crates/cli/src/main.rs:236`),用户旗标记录在[配置](/zh/configuration)。
 
 ### 6. 机群注册与控制面状态层
 
-`crates/coordinator/src/lib.rs` 运行多线程 TCP 中枢,把 agents、reports 和逻辑 routes 保存在 `Arc<Mutex<CoordinatorState>>`,并处理标签控制协议(`crates/coordinator/src/lib.rs:65`、`crates/coordinator/src/lib.rs:199`、`crates/coordinator/src/lib.rs:212`)。全部状态易失。`AgentIdentity`、`AgentCommand`、`AgentResponse` 和 `WireMessage` 定义该协议(`crates/coordinator/src/lib.rs:32`、`crates/coordinator/src/lib.rs:44`、`crates/coordinator/src/lib.rs:55`、`crates/coordinator/src/lib.rs:98`);`crates/coordinator/src/main.rs:4` 提供 bind/token 输入并记录在[配置](/zh/configuration)。操作协议文案在 [Agents](/zh/remote-agents)。
+`crates/coordinator/src/lib.rs` 运行多线程 TCP 中枢,把 agents、reports、存活链路 links 和每 agent 队列 queues 保存在 `Arc<Mutex<CoordinatorState>>`,同时处理控制端会话与 agent 反向链路(`crates/coordinator/src/lib.rs:156`、`crates/coordinator/src/lib.rs:270`、`crates/coordinator/src/lib.rs:455`、`crates/coordinator/src/lib.rs:503`)。全部状态易失。`AgentIdentity`、`AgentCommand`、`AgentResponse` 和 `WireMessage` 定义该协议(`crates/coordinator/src/lib.rs:51`、`crates/coordinator/src/lib.rs:69`、`crates/coordinator/src/lib.rs:80`、`crates/coordinator/src/lib.rs:235`);`crates/coordinator/src/main.rs:4` 提供 bind/token 输入并记录在[配置](/zh/configuration)。操作协议文案在 [Agents](/zh/remote-agents)。
 
 ### 7. 证据与可复现模型层
 
@@ -98,10 +99,10 @@ disconnect 故障完全绕过 `tc` —— 见 [Netem 故障](/zh/netem-faults#di
 
 ### 拆分理由
 
-1. `core::Injection` 同时被 CLI 直接构造和 coordinator 校验消费,语义校验不能依赖任一传输宿主(`crates/cli/src/main.rs:188`、`crates/coordinator/src/lib.rs:159`)。
+1. `core::Injection` 同时被 CLI 直接构造和 coordinator 校验消费,语义校验不能依赖任一传输宿主(`crates/cli/src/main.rs:136`、`crates/coordinator/src/lib.rs:309`)。
 2. netem 分别暴露 plan、inject、rollback;Agent 需要执行,而适配器和测试需要 dry 规划或记录命令(`crates/netem/src/lib.rs:199`、`crates/netem/src/lib.rs:204`、`crates/netem/src/lib.rs:232`)。
 3. netem 执行器是 trait,同一命令翻译可指向 Linux `tc`、dry-run 或测试记录器,而不改策略(`crates/netem/src/lib.rs:73`、`crates/netem/src/lib.rs:163`)。
 4. Disconnect 和包级故障的状态、原子性与回滚机制不同;Agent 将它们路由到独立的 `Iptables` 与 `NetemAdapter` 实现(`crates/agent/src/lib.rs:196`、`crates/agent/src/firewall.rs:117`、`crates/netem/src/lib.rs:204`)。
 5. Agent 的活动故障标记跨连接存在,但命令执行 socket 按连接接受;合并这两个生命周期会让恢复状态变成偶然实现(`crates/agent/src/lib.rs:340`、`crates/agent/src/lib.rs:341`)。
-6. coordinator 状态与控制路由和目标执行分离,因为 inject 当前只归档并入队,不向 agent 转发(`crates/coordinator/src/lib.rs:159`、`crates/coordinator/src/lib.rs:176`)。
+6. coordinator 状态与分发路由同目标执行分离:中枢把控制端指令转成 agent 反向链路上的 `LinkMessage::Dispatch`(agent 离线时入队),而真正施加故障由 agent crate 负责(`crates/coordinator/src/lib.rs:351`、`crates/coordinator/src/lib.rs:660`)。
 7. 报告需要稳定哈希、回放文本和证据字段,不依赖调用者把它存文件还是 coordinator 内存(`crates/report/src/lib.rs:49`、`crates/report/src/lib.rs:92`、`crates/cli/src/main.rs:233`)。

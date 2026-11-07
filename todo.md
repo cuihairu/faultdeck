@@ -10,10 +10,10 @@
   - commit daed723;测试 transport 3;跨机 NAT 实测 BLOCKED;复核 2026-11-06：仍缺跨 NAT 双机网络环境
 - [x] FD-REPORT-1 [P1] 报告体系:场景 JSON+SHA256 哈希、RunReport 时间线/恢复证据/外部断言/重现命令、JSON+HTML 双格式、compare_runs 历史 diff。
   - commit d7cda7d;测试 report 4
-- [x] FD-ARCH-2 [P1] Coordinator 多目标中枢:agent 注册/心跳/在线状态,控制端发起实验(入队),报告集中存档,解决双向 NAT。
-  - commit e41d3f5;测试 coordinator 10;跨机 NAT/mTLS 实测 BLOCKED;复核 2026-11-06：仍缺跨 NAT 双机环境与 mTLS 对端/证书;在线指令分发未接线(见 FD-ARCH-2-DISPATCH)
-- [ ] FD-ARCH-2-DISPATCH [P1] coordinator 在线指令分发:向已注册 agent 的活动连接实际下发 inject/rollback 并回传结果。
-  - BLOCKED;复核 2026-11-06：缺分发接线实现(crates/coordinator/src/lib.rs:69 routes 未用、lib.rs:173,177 仅返回 queued)与跨 NAT 双机验证环境
+- [x] FD-ARCH-2 [P1] Coordinator 多目标中枢:agent 注册/心跳/在线状态,控制端发起实验,报告集中存档,解决双向 NAT。
+  - commit e41d3f5 + 775ae20;测试 coordinator 18 + cli hub 1;跨机 NAT/mTLS 实测 BLOCKED(仍缺跨 NAT 双机环境与 mTLS 对端/证书);在线指令分发已接线(见 FD-ARCH-2-DISPATCH)
+- [x] FD-ARCH-2-DISPATCH [P1] coordinator 在线指令分发:向已注册 agent 的活动连接实际下发 inject/rollback 并回传结果。
+  - commit 775ae20;测试 coordinator 18(含真实 TCP 链路下发/断线失败/离线入队补发/超时)+ cli hub 端到端 1;inject/rollback 真实入队并沿 agent 反向链路下发、结果回传合入报告(lib.rs:351 submit_control、lib.rs:660 spawn_dispatcher、link.rs:140 pump_dispatches);跨 NAT 双机真机实测 BLOCKED(仅缺双机网络环境,协议链路已由同机 TCP 集成测试覆盖)
 
 ## 评审修复 2026-11-03(netem)
 
@@ -145,9 +145,12 @@
   - 核验：2026-11-06 `git log --oneline b22ef710..ea31527` 仅含 ea31527（todo 审核记录），`git diff --stat b22ef710..ea31527` 为 todo.md +2；`cargo test --workspace` 全绿（69 passed, 0 failed），`pnpm docs:build` 通过；commit ea31527
 - [x] 审核发现：里程碑 FD-ARCH-2 标记 [x] 已完成但其需求含「指令路由」，而本 diff 与 crates/coordinator/src/lib.rs:159-178 表明在线指令分发尚未接线（inject/rollback 仅入队返回 queued，routes 字段未用于分发），且本 diff 在 todo.md:14 的复核注记只提缺跨 NAT/mTLS 测试环境、未提缺分发功能，完成状态与实际情况不符（todo.md:13）
   - 修复：todo.md:13 FD-ARCH-2 范围改述为已完成部分(注册/心跳/在线、入队实验、报告存档、双 NAT)，并新增未勾项 FD-ARCH-2-DISPATCH 注明在线分发未接线(lib.rs:69 routes 未用、lib.rs:173,177 仅返回 queued)，todo.md:14 复核注记补「在线指令分发未接线」；cargo test --workspace 全绿（69 passed, 0 failed）；证据 commit 02ac7eb
-- [ ] 审核发现：FD-ARCH-2 将实验入队标为已完成，但 inject 只创建报告并返回 queued，未保存待执行指令，rollback 也未入队（todo.md:13）
-- [ ] 审核发现：FD-ARCH-2 将解决双向 NAT 标为已完成，但协调器未将控制指令转发到 agent，无法经中枢对双向 NAT 后的目标执行实验（todo.md:13）
-- [ ] 审核发现：FD-ARCH-2 将在线状态标为已完成，但协调器只记录心跳时间并列出全部已注册 agent，未判断连接或心跳过期状态，离线 agent 仍会出现在列表中（todo.md:13）
+- [x] 审核发现：FD-ARCH-2 将实验入队标为已完成，但 inject 只创建报告并返回 queued，未保存待执行指令，rollback 也未入队（todo.md:13）
+  - 修复：inject/rollback 改为真实入队（CoordinatorState.queues 每 agent VecDeque，crates/coordinator/src/lib.rs:115 PendingCommand、lib.rs:164 queues、lib.rs:351 submit_control），agent 在线时立即沿其链路下发并等待执行结果；测试 inject_queued_when_offline_persists_instruction、rollback_queued_when_offline_persists_instruction、dispatch_inject_and_rollback_through_agent_link；cargo test --workspace 全绿（78 passed, 0 failed）；证据 commit 775ae20
+- [x] 审核发现：FD-ARCH-2 将解决双向 NAT 标为已完成，但协调器未将控制指令转发到 agent，无法经中枢对双向 NAT 后的目标执行实验（todo.md:13）
+  - 修复：agent 反向拨号建立长连（crates/agent/src/link.rs:77 link_session、:184 run_link），coordinator 沿该既有出站连接下行 Dispatch、上行 Result（crates/coordinator/src/lib.rs:503 handle_agent_link、lib.rs:660 spawn_dispatcher），不要求对 agent 入站可达；测试 dispatch_inject_and_rollback_through_agent_link、queued_command_is_delivered_when_agent_reconnects、cli hub 端到端 hub_cli_dispatches_to_linked_agent；跨 NAT 双机真机实测 BLOCKED（仅缺双机网络环境）；证据 commit 775ae20
+- [x] 审核发现：FD-ARCH-2 将在线状态标为已完成，但协调器只记录心跳时间并列出全部已注册 agent，未判断连接或心跳过期状态，离线 agent 仍会出现在列表中（todo.md:13）
+  - 修复：在线判定=链路存活或心跳在 HEARTBEAT_TIMEOUT_MS 30 s 内（crates/coordinator/src/lib.rs:211 is_online），list 逐项标注 AgentIdentity.online、available 剔除离线（lib.rs:191/203）；测试 list_marks_offline_after_heartbeat_expiry、list_marks_online_while_link_live_and_offline_after_drop；证据 commit 775ae20
 
 ## 源码分层分析 2026-11-07
 
@@ -157,8 +160,8 @@
 - 策略到后端翻译层：将延迟/丢包翻译成可执行、可规划、可回滚的 tc 命令（`crates/netem/src/lib.rs:172`）。
 - 宿主执行与防护层：接收并鉴权请求、路由后端、维护跨连接的单活动故障状态（`crates/agent/src/lib.rs:171`）。
 - 线传输与拓扑层：提供有界的 NDJSON 分帧和 Mode A/Mode B 连接拓扑（`crates/agent/src/transport.rs:56`）。
-- 用户入口与报告物化层：转换 CLI 参数、执行远程调用并生成报告与回放命令（`crates/cli/src/main.rs:147`）。
-- 机群注册与控制面状态层：维护易失 Agent 注册表、报告归档和未接线的控制路由（`crates/coordinator/src/lib.rs:65`）。
+- 用户入口与报告物化层：转换 CLI 参数、执行远程调用并生成报告与回放命令（`crates/cli/src/main.rs:136`）。
+- 机群注册与控制面状态层：维护易失 Agent 注册表、报告归档、存活链路与每 agent 指令队列，并经链路在线分发控制指令（`crates/coordinator/src/lib.rs:156`）。
 - 证据与可复现模型层：定义场景哈希、运行报告、HTML 渲染和历史 diff（`crates/report/src/lib.rs:78`）。
 
 详细术语见 `docs/glossary.md` 与 `docs/zh/glossary.md`；层落位与拆分理由见 `docs/architecture.md` 与 `docs/zh/architecture.md`。

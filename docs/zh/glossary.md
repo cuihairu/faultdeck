@@ -24,17 +24,18 @@
 | NDJSON 帧 | NDJSON frame | 以换行分界的 JSON 值,硬性上限 64 KiB。 | `crates/agent/src/transport.rs:56` |
 | Mode A | Mode A | Agent 监听拓扑:控制器向常驻目标 Agent 打开一条 TCP 流。 | `crates/agent/src/transport.rs:94` |
 | Mode B | Mode B | 控制器监听的反向连接拓扑,通过重试和退避穿越 NAT。 | `crates/agent/src/transport.rs:118` |
-| 中枢信封 | `WireMessage` | coordinator 信封,携带可选 token 和一条控制命令。 | `crates/coordinator/src/lib.rs:98` |
-| 中枢命令 | `AgentCommand` | coordinator 接受的注册、心跳、注入、回滚、取报告或列 Agent 操作。 | `crates/coordinator/src/lib.rs:44` |
-| 中枢响应 | `AgentResponse` | coordinator 的确认、注册表列表、报告或错误结果。 | `crates/coordinator/src/lib.rs:55` |
-| Agent 身份 | `AgentIdentity` | coordinator 保存的 Agent ID、能力列表和最近心跳时间。 | `crates/coordinator/src/lib.rs:32` |
-| 心跳 | heartbeat | 更新某个已注册 Agent 的 `last_seen_ms`;当前不判定在线/离线状态。 | `crates/coordinator/src/lib.rs:77` |
-| 中枢路由表 | coordinator routes | coordinator 状态中的逻辑 Agent 路由映射;其分发行为尚未接线。 | `crates/coordinator/src/lib.rs:65` |
-| 排队注入 | queued inject | 校验注入、归档报告桩并返回 queued;不会向 Agent 转发命令。 | `crates/coordinator/src/lib.rs:159` |
+| 中枢信封 | `WireMessage` | coordinator 信封,携带可选 token 和一条控制命令。 | `crates/coordinator/src/lib.rs:235` |
+| 中枢命令 | `AgentCommand` | coordinator 接受的注册、心跳、注入、回滚、取报告或列 Agent 操作。 | `crates/coordinator/src/lib.rs:69` |
+| 中枢响应 | `AgentResponse` | coordinator 的确认、入队回执、注册表列表、报告或错误结果。 | `crates/coordinator/src/lib.rs:80` |
+| Agent 身份 | `AgentIdentity` | coordinator 保存的 Agent ID、能力列表、最近心跳时间和列表时计算的在线标志。 | `crates/coordinator/src/lib.rs:51` |
+| 心跳 | heartbeat | 更新某个已注册 Agent 的 `last_seen_ms`;新鲜度参与在线判定。 | `crates/coordinator/src/lib.rs:178` |
+| Agent 链路 | agent link | agent 到 coordinator 的出站连接;`LinkMessage::Dispatch` 沿其下行,`Result`/`Heartbeat` 沿其上行。 | `crates/coordinator/src/lib.rs:134` |
+| 在线状态 | online status | 链路存活或心跳在 `HEARTBEAT_TIMEOUT_MS`(30 s)内;离线 agent 从 `available` 剔除。 | `crates/coordinator/src/lib.rs:211` |
+| 指令入队 | queued command | 目标 agent 离线时,inject/rollback 持久保存在其队列中,下次注册时补发。 | `crates/coordinator/src/lib.rs:351` |
 | 场景 | `Scenario` | 带名称的注入;其稳定序列化是哈希和报告的输入。 | `crates/report/src/lib.rs:38` |
 | 场景哈希 | scenario hash | 场景的 SHA-256 身份,用于报告查找和比较。 | `crates/report/src/lib.rs:49` |
 | 运行报告 | `RunReport` | 权威结果模型,包含场景身份、时间戳、证据和回放文本。 | `crates/report/src/lib.rs:78` |
-| 回放命令 | replay command | 用户入口生成、保存进报告的 shell 引号安全 CLI 命令。 | `crates/cli/src/main.rs:206` |
+| 回放命令 | replay command | 用户入口生成、保存进报告的 shell 引号安全 CLI 命令。 | `crates/cli/src/main.rs:315` |
 | 恢复证据 | restore evidence | 回滚后的带时间戳检查,包含通过/失败和详情字段。 | `crates/report/src/lib.rs:63` |
 | 外部断言 | external assertion | 附加到运行报告的具名外部观察结果。 | `crates/report/src/lib.rs:71` |
 | 历史 diff | historical diff | 对两份报告的事件、证据和断言集合做结构比较。 | `crates/report/src/lib.rs:175` |

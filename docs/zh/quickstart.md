@@ -23,7 +23,7 @@ cargo build --release
 |---|---|
 | `faultdeck-agent` | 目标主机上的常驻守护进程,负责实际施加故障 |
 | `faultdeck` | 本地 CLI,通过 TCP 与 agent 通信 |
-| `faultdeck-coordinator` | 可选的多目标中枢;维护 agent 注册表与报告归档 |
+| `faultdeck-coordinator` | 可选的多目标中枢;维护 agent 注册表与报告归档,经 agent 链路在线下发指令 |
 
 ## 2. 启动 agent
 

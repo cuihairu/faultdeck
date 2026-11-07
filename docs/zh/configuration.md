@@ -11,6 +11,9 @@ FaultDeck 没有配置文件 —— 一切都在进程启动时以 CLI 参数传
 | `--interface IFACE` | `eth0` | `tc` 适配器操作的网卡 |
 | `--management CIDR` | 空 | 可重复;保护网段,重叠即拒绝注入 |
 | `--iptables PATH` | 无 | `disconnect` 必需;缺失时 agent 应答 `iptables missing` |
+| `--coordinator HOST:PORT` | 无 | link 模式:反向拨号 coordinator,不再监听 |
+| `--agent-id ID` | 无 | 注册表 id;`--coordinator` 时必需 |
+| `--heartbeat-ms MS` | `10000` | link 模式心跳间隔(毫秒,仅 link 模式) |
 
 编译期常量(不可配置):
 
@@ -30,22 +33,23 @@ FaultDeck 没有配置文件 —— 一切都在进程启动时以 CLI 参数传
 faultdeck-coordinator --bind 127.0.0.1:7001 [--token <shared-secret>]
 ```
 
-`--bind` 默认为 `127.0.0.1:7001`。`--token` 可选;设置后每条线上消息都必须携带匹配的 token(见 `remote-agents.md`)。状态(注册表、报告归档、路由)均在内存。
+`--bind` 默认为 `127.0.0.1:7001`。`--token` 可选;设置后每条线上消息都必须携带匹配的 token(见 `remote-agents.md`)。状态(注册表、报告归档、存活链路、每 agent 指令队列)均在内存。
 
 ## faultdeck(CLI)
 
 | 参数 | 适用 | 默认 | 说明 |
 |---|---|---|---|
-| `--host` | 所有 `remote` 子命令 | 必填 | agent 地址 |
-| `--port` | 所有 `remote` 子命令 | `7000` | agent 端口 |
-| `--token` | 所有 `remote` 子命令 | 无 | 前置到请求行 |
+| `--host` | 所有 `remote`/`hub` 子命令 | 必填 | agent(`remote`)或 coordinator(`hub`)地址 |
+| `--port` | 所有 `remote`/`hub` 子命令 | `7000`(`remote`)、`7001`(`hub`) | 服务端口 |
+| `--token` | 所有 `remote`/`hub` 子命令 | 无 | 前置到请求行 |
+| `--agent` | `hub inject`/`hub rollback` | 必填 | coordinator 注册表中的目标 agent id |
 | `--fault` | `inject` | 必填 | `latency` \| `loss` \| `disconnect` |
 | `--destination` | `inject` | 必填 | IPv4 CIDR |
 | `--port-spec` | `inject` | 无 | 可选目的端口匹配 |
 | `--milliseconds` | `inject --fault latency` | 该故障必需 | 延迟毫秒 |
 | `--percent` | `inject --fault loss` | 该故障必需 | 丢包百分比 |
 | `--scenario-name` | `inject` | `"scenario"` | 报告标签 |
-| `--report-json` | `inject` | 无 | 本地写 JSON 报告 |
-| `--report-html` | `inject` | 无 | 本地写 HTML 报告 |
+| `--report-json` | `remote inject` | 无 | 本地写 JSON 报告 |
+| `--report-html` | `remote inject` | 无 | 本地写 HTML 报告 |
 
 唯一的环境变量是 `FAULTDECK_TIMEOUT_SECS`,覆盖 CLI 对 agent 连接默认 5 秒的读写超时(`crates/cli/src/main.rs`)。没有配置文件查找;agent 与 coordinator 也没有上述参数之外的选项。

@@ -20,6 +20,11 @@ sudo faultdeck-agent \
 | `--token` | 不设(鉴权关闭) | 设置后每个请求都必须携带共享密钥 |
 | `--management` | 空 | 可重复的保护网段;重叠即拒绝 |
 | `--iptables` | 无 | iptables 二进制路径;**`disconnect` 必需** |
+| `--coordinator` | 无 | 反向拨号的 coordinator `HOST:PORT`(link 模式,**Mode B**) |
+| `--agent-id` | 无 | coordinator 注册表中的 id;**`--coordinator` 时必需** |
+| `--heartbeat-ms` | `10000` | link 模式的心跳间隔(毫秒) |
+
+link 模式下 agent **不再监听**控制连接 —— 而是主动出站拨号 coordinator(可穿双向 NAT),以 `--agent-id` 注册,发送心跳,执行下发的 `inject`/`rollback` 指令,并通过同一条连接回传结果;断线自动带退避重连。
 
 启动警告:未配置任何 `--management` 网段时,agent 会打印 `warning: no management networks configured; agent may fault management traffic`;绑定非回环地址且未配置 `--token` 时也会告警:`warning: binding <addr> without a token; any reachable host can control the agent`。重要主机务必配置管理网段与 token。
 
@@ -49,18 +54,21 @@ coordinator(默认端口 `7001`)维护 agent 注册表,协议复用同一套换�
 → {"status":"ok","message":"heartbeat ok"}        // 未注册的 id 报 "not registered"
 
 {"token":"<secret-or-null>","command":{"cmd":"list_agents"}}
-→ {"status":"agents","agents":[ …AgentIdentity… ]}
+→ {"status":"agents","agents":[ …AgentIdentity… (每项含 online:true|false) ],"available":["game-01"]}
+// 在线判定:link 连接存活,或最后一次心跳在 30 s(HEARTBEAT_TIMEOUT_MS)内;
+// 离线 agent 会被从 `available` 中剔除
 
 {"token":"<secret-or-null>","command":{"cmd":"fetch_report","id":"game-01","scenario_hash":"<sha256>"}}
 → {"status":"report","report":{ …RunReport… }}    // 或 "report not found"
 
 {"token":"<secret-or-null>","command":{"cmd":"inject","id":"game-01","injection":{ … }}}
-→ {"status":"ok","message":"queued for game-01"}  // 仅入队;在线分发尚未接线
+→ {"status":"ok","message":"fault applied: …"}    // agent 在线:真实下发并回传执行结果
+→ {"status":"queued","agent_id":"game-01","pending":1}  // agent 离线:指令持久入队,重连后自动下发
 ```
 
 ## 远程 CLI
 
-`faultdeck` 二进制目前是唯一随仓库发布的客户端,且只与 agent 直接通信(尚无 coordinator 子命令):
+`faultdeck` 二进制提供两类客户端。`remote` 直连 agent(Mode A);`hub` 连接 coordinator,由后者经 agent 反向链路转发指令(Mode B,不要求 agent 入站可达):
 
 ```bash
 faultdeck remote ping     --host AGENT --port 7000 [--token T]
@@ -69,6 +77,14 @@ faultdeck remote inject   --host AGENT --port 7000 [--token T] \
     [--milliseconds MS] [--percent PCT] \
     [--scenario-name NAME] [--report-json F] [--report-html F]
 faultdeck remote rollback --host AGENT --port 7000 [--token T]
+
+faultdeck hub list     --host COORD --port 7001 [--token T]
+faultdeck hub inject   --host COORD --port 7001 [--token T] --agent game-01 \
+    --fault latency|loss|disconnect --destination CIDR [--port-spec P] \
+    [--milliseconds MS] [--percent PCT] [--scenario-name NAME]
+faultdeck hub rollback --host COORD --port 7001 [--token T] --agent game-01
 ```
 
-传输层 crate(`faultdeck_agent::transport`)还为未来客户端暴露两种连接模式:**Mode A**(agent 监听,控制端拨入)与 **Mode B**(控制端监听,agent 穿 NAT 拨出,带重试/退避)。Mode B 已实现为可重连连接器,但尚未被任何已发布二进制使用。
+`hub inject`/`hub rollback` 最多等待 5 s 获取 agent 执行结果(经在线 link 下发);若 agent 离线,coordinator 会把指令入队并回复 `queued for {id} (pending N)` —— 该 agent 下次连上时自动补发。
+
+传输层 crate(`faultdeck_agent::transport`)暴露两种连接模式:**Mode A**(agent 监听,控制端拨入)与 **Mode B**(agent 穿 NAT 拨出,带重试/退避)。Mode B 已端到端可用:`faultdeck-agent --coordinator HOST:PORT --agent-id ID` 维持反向链路,coordinator 沿该链路下发排队指令。

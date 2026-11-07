@@ -1,0 +1,1 @@
+import{U as e,W as t,nt as n,t as r}from"./chunks/framework.BPwQCpO3.js";var i=JSON.parse(`{"title":"术语表","description":"","frontmatter":{},"headers":[],"relativePath":"zh/glossary.md","filePath":"zh/glossary.md"}`),a={name:`zh/glossary.md`};function o(r,i,a,o,s,c){return n(),e(`div`,null,[...i[0]||=[t("",3)]])}var s=r(a,[[`render`,o]]);export{i as __pageData,s as default};

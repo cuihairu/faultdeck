@@ -52,7 +52,7 @@ The agent dials out and reverse-connects; a long-lived tunnel (auto-reconnect) c
 
 ![Mode C](docs/public/mode-c-coordinator.svg)
 
-The coordinator sits where both sides can reach; agents register with heartbeats, controllers attach and submit experiments in queued mode, and reports are archived centrally; live command dispatch to agents is not wired yet; it solves double-NAT and enables a fleet view; in our fleet it can run on top of the meshlet virtual network.
+The coordinator sits where both sides can reach; agents reverse-dial it and hold the link (auto-reconnect, heartbeat), controllers submit experiments via `faultdeck hub`, commands dispatch live down each agent's link and execution results return through it (offline agents' commands queue until they reconnect), and reports are archived centrally; it solves double-NAT and enables a fleet view; in our fleet it can run on top of the meshlet virtual network.
 
 > All three modes share one protocol (command/event/log/report streams); only "who listens, who dials, and whether traffic routes through a coordinator" differs.
 
@@ -63,7 +63,7 @@ The coordinator sits where both sides can reach; agents register with heartbeats
 | P0 | Rust CLI + Toxiproxy adapter + experiment YAML + latency/disconnect/blackhole/bandwidth + auto recovery + JSON report (test-driven: game disconnect-reconnect scenario ships first) | Partially shipped — CLI, latency/loss/disconnect, explicit rollback and JSON report live; automatic fault recovery, Toxiproxy adapter, experiment YAML, blackhole/bandwidth pending |
 | P1 | tc/netem adapter, TCP/UDP, traffic selection, burst loss, reordering, netns isolation | Partially shipped — tc/netem adapter + traffic selection (src/dst/port) live in `crates/netem`; burst loss, reordering, netns isolation pending |
 | P2 | Game weak-network / combat-disconnect / cross-server-partition templates, Wingman API integration, external assertions & reports | Planned |
-| P3 | WinDivert, optional Web UI, multi-target, remote agent, CI integration | Partially shipped — remote agent (`crates/agent`) and CI build/test (`.github/workflows/rust.yml`) live; coordinator registration, queued inject and central report archive live, live command dispatch to agents pending; WinDivert and Web UI pending |
+| P3 | WinDivert, optional Web UI, multi-target, remote agent, CI integration | Partially shipped — remote agent (`crates/agent`) and CI build/test (`.github/workflows/rust.yml`) live; coordinator registration, live inject/rollback dispatch over agent reverse links, offline queueing, online status and central report archive live; WinDivert and Web UI pending |
 
 ## Repository Layout
 

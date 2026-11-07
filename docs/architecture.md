@@ -9,9 +9,9 @@ FaultDeck is a Rust workspace. The current implementation ships **six built crat
 | `faultdeck-core` | — | shared model: `FaultSpec` (latency / loss / disconnect), `Target`, `Injection`, intrinsic validation (`validate_injection`), management-network overlap check |
 | `faultdeck-netem` | — | `tc` adapter: plans and executes `tc qdisc`/`filter` commands, preflight checks, rollback, `dry_run` executor |
 | `faultdeck-agent` | `faultdeck-agent` | resident TCP daemon: token auth, request handling, iptables firewall (disconnect), single-active-fault state |
-| `faultdeck-coordinator` | `faultdeck-coordinator` | multi-target hub: agent registry (register/heartbeat/list), report archive, queued inject/rollback commands |
+| `faultdeck-coordinator` | `faultdeck-coordinator` | multi-target hub: agent registry (register/heartbeat/list with online status), report archive, live inject/rollback dispatch over agent reverse links, per-agent queues for offline agents |
 | `faultdeck-report` | — | `Scenario`, `RunReport` (JSON/HTML), SHA-256 scenario hash, `compare_runs` history diff |
-| `faultdeck-cli` | `faultdeck` | CLI entry: `faultdeck remote ping / inject / rollback` |
+| `faultdeck-cli` | `faultdeck` | CLI entry: `faultdeck remote ping / inject / rollback` (direct to agent) and `faultdeck hub list / inject / rollback` (via coordinator) |
 | `faultdeck-protocol` | — | *placeholder, not in workspace* |
 
 ## Interaction overview
@@ -28,10 +28,11 @@ FaultDeck is a Rust workspace. The current implementation ships **six built crat
 
  faultdeck-coordinator (default :7001)
  ┌────────────────────────────────────────────┐
- │ registry: agents / reports / routes        │◀── framed JSON lines (multi-message
- │ AgentCommand: register, heartbeat,         │    connections, threaded accept)
- │   inject, rollback, fetch_report,          │
- │   list_agents                              │
+ │ registry: agents / reports / links /       │◀── framed JSON lines (multi-message
+ │   queues                                   │    connections, threaded accept)
+ │ AgentCommand: register, heartbeat,         │◀── agent reverse links: RegisterEnvelope,
+ │   inject, rollback, fetch_report,          │    then LinkMessage::Dispatch → Result /
+ │   list_agents                              │    Heartbeat on the same connection
  └────────────────────────────────────────────┘
 ```
 
@@ -45,14 +46,14 @@ One TCP connection per CLI invocation. The client sends a single line; the agent
 
 ## Wire protocol (coordinator)
 
-Long-lived connections, newline-framed JSON lines in both directions (`faultdeck-agent::transport`). Tagged enums:
+Long-lived connections, newline-framed JSON lines in both directions (`faultdeck-agent::transport`). One listener serves two session kinds, disambiguated by the first frame:
 
-- `AgentCommand`: `register` | `heartbeat` | `inject` | `rollback` | `fetch_report` | `list_agents`
-- `AgentResponse`: `ok` | `error` | `registered` | `agents` | `report`
+- **Controller session** — a `WireMessage` envelope per command. `AgentCommand`: `register` | `heartbeat` | `inject` | `rollback` | `fetch_report` | `list_agents`; `AgentResponse`: `ok` | `error` | `registered` | `queued` | `agents` | `report`.
+- **Agent link** — the agent dials the coordinator outbound (double-NAT safe) and sends a `RegisterEnvelope` first (`crates/agent/src/link.rs:46`); afterwards the coordinator writes `LinkMessage::Dispatch` frames down the same connection and the agent answers with `LinkMessage::Result` plus periodic `LinkMessage::Heartbeat`s.
 
-State lives in a `Mutex<CoordinatorState>`: `agents` and `reports` are `BTreeMap`s, plus a `routes` map.
+State lives in a `Mutex<CoordinatorState>`: `agents`, `reports`, `links` (live reverse connections), and per-agent `queues` are `BTreeMap`s.
 
-**Implementation status:** `inject`/`rollback` at the coordinator currently *queue* the command (the response is `queued for {id}`, and a report stub is archived under the scenario hash). Dispatch of queued commands to live agent connections is not wired yet; `register`/`heartbeat`/`list_agents`/`fetch_report` are fully functional in-process.
+**Implementation status:** `inject`/`rollback` validate, archive a report stub, and then dispatch for real — a live link receives the command immediately, the agent's execution result is returned to the waiting controller (bounded by `DEFAULT_DISPATCH_TIMEOUT`, 5 s) and folded into the archived report; if the agent is offline the command persists in its queue and is drained on its next registration. `list_agents` annotates each `AgentIdentity.online` from link liveness or heartbeat freshness (`HEARTBEAT_TIMEOUT_MS`, 30 s) and offline agents are excluded from `available`.
 
 ## Failure handling in the netem adapter
 
@@ -82,15 +83,15 @@ The source responsibility layers are independent of crate-directory names. Terms
 
 ### 4. Wire transport and topology
 
-`crates/agent/src/transport.rs` owns bounded NDJSON framing plus Mode A listen/accept and Mode B reverse connect (`crates/agent/src/transport.rs:56`, `crates/agent/src/transport.rs:94`, `crates/agent/src/transport.rs:118`). It is stateless except accepted sockets. The framing schema is the generic `send_frame`/`read_frame` pair (`crates/agent/src/transport.rs:57`, `crates/agent/src/transport.rs:65`); topology prose is in [Agents](/remote-agents), and payload types live in the agent and coordinator layers rather than a dedicated protocol crate (`crates/protocol/src` is empty).
+`crates/agent/src/transport.rs` owns bounded NDJSON framing plus Mode A listen/accept and Mode B reverse connect (`crates/agent/src/transport.rs:56`, `crates/agent/src/transport.rs:94`, `crates/agent/src/transport.rs:118`). It is stateless except accepted sockets. The framing schema is the generic `send_frame`/`read_frame` pair (`crates/agent/src/transport.rs:57`, `crates/agent/src/transport.rs:65`). On top of that framing, `crates/agent/src/link.rs` implements the live Mode B link session — register envelope, heartbeat thread, dispatch pump, and the reconnecting `run_link` loop (`crates/agent/src/link.rs:77`, `crates/agent/src/link.rs:140`, `crates/agent/src/link.rs:184`). Topology prose is in [Agents](/remote-agents), and payload types live in the agent and coordinator layers rather than a dedicated protocol crate (`crates/protocol/src` is empty).
 
 ### 5. User boundary and report materialization
 
-`crates/cli/src/main.rs` converts `remote ping/inject/rollback` arguments into shared `Injection` values, performs one bounded TCP exchange, optionally materializes JSON/HTML reports, and generates a replay command (`crates/cli/src/main.rs:96`, `crates/cli/src/main.rs:147`, `crates/cli/src/main.rs:200`, `crates/cli/src/main.rs:233`). It owns no server state; file output is caller-directed. The command schema is the clap tree at `crates/cli/src/main.rs:12`, `FAULTDECK_TIMEOUT_SECS` is the sole environment input (`crates/cli/src/main.rs:105`), and user-facing flags are documented in [Configuration](/configuration).
+`crates/cli/src/main.rs` converts `remote ping/inject/rollback` and `hub list/inject/rollback` arguments into shared `Injection` values, performs bounded TCP exchanges with the agent or coordinator, optionally materializes JSON/HTML reports, and generates a replay command (`crates/cli/src/main.rs:136`, `crates/cli/src/main.rs:165`, `crates/cli/src/main.rs:227`, `crates/cli/src/main.rs:341`). It owns no server state; file output is caller-directed. The command schema is the clap tree at `crates/cli/src/main.rs:22`, `FAULTDECK_TIMEOUT_SECS` is the sole environment input (`crates/cli/src/main.rs:236`), and user-facing flags are documented in [Configuration](/configuration).
 
 ### 6. Fleet registry and control-plane state
 
-`crates/coordinator/src/lib.rs` runs a threaded TCP hub, stores agents, reports, and logical routes in `Arc<Mutex<CoordinatorState>>`, and handles the tagged control protocol (`crates/coordinator/src/lib.rs:65`, `crates/coordinator/src/lib.rs:199`, `crates/coordinator/src/lib.rs:212`). All state is volatile. `AgentIdentity`, `AgentCommand`, `AgentResponse`, and `WireMessage` define that schema (`crates/coordinator/src/lib.rs:32`, `crates/coordinator/src/lib.rs:44`, `crates/coordinator/src/lib.rs:55`, `crates/coordinator/src/lib.rs:98`); `crates/coordinator/src/main.rs:4` supplies bind/token inputs documented in [Configuration](/configuration). [Agents](/remote-agents) carries the operational protocol prose.
+`crates/coordinator/src/lib.rs` runs a threaded TCP hub, stores agents, reports, live links, and per-agent queues in `Arc<Mutex<CoordinatorState>>`, and handles controller sessions plus agent reverse links (`crates/coordinator/src/lib.rs:156`, `crates/coordinator/src/lib.rs:270`, `crates/coordinator/src/lib.rs:455`, `crates/coordinator/src/lib.rs:503`). All state is volatile. `AgentIdentity`, `AgentCommand`, `AgentResponse`, and `WireMessage` define that schema (`crates/coordinator/src/lib.rs:51`, `crates/coordinator/src/lib.rs:69`, `crates/coordinator/src/lib.rs:80`, `crates/coordinator/src/lib.rs:235`); `crates/coordinator/src/main.rs:4` supplies bind/token inputs documented in [Configuration](/configuration). [Agents](/remote-agents) carries the operational protocol prose.
 
 ### 7. Evidence and reproducibility model
 
@@ -98,10 +99,10 @@ The source responsibility layers are independent of crate-directory names. Terms
 
 ### Why these layers are split
 
-1. `core::Injection` is consumed by both direct CLI construction and coordinator validation, so semantic validation must not depend on either transport host (`crates/cli/src/main.rs:188`, `crates/coordinator/src/lib.rs:159`).
+1. `core::Injection` is consumed by both direct CLI construction and coordinator validation, so semantic validation must not depend on either transport host (`crates/cli/src/main.rs:136`, `crates/coordinator/src/lib.rs:309`).
 2. Netem exposes plan, inject, and rollback separately; the agent needs execution while adapters and tests need dry planning or recorded commands (`crates/netem/src/lib.rs:199`, `crates/netem/src/lib.rs:204`, `crates/netem/src/lib.rs:232`).
 3. The netem executor is a trait so the same command translation can target Linux `tc`, dry-run, or a test recorder without changing policy (`crates/netem/src/lib.rs:73`, `crates/netem/src/lib.rs:163`).
 4. Disconnect and packet faults differ in state, atomicity, and rollback mechanics; the agent routes them to separate `Iptables` and `NetemAdapter` implementations (`crates/agent/src/lib.rs:196`, `crates/agent/src/firewall.rs:117`, `crates/netem/src/lib.rs:204`).
 5. The agent's active-fault marker lives across connections, but the command executor socket handle is accepted per connection; mixing those lifetimes would make recovery state accidental (`crates/agent/src/lib.rs:340`, `crates/agent/src/lib.rs:341`).
-6. Coordinator state and control routing are centralized separately from target execution because inject currently archives and queues without forwarding to an agent (`crates/coordinator/src/lib.rs:159`, `crates/coordinator/src/lib.rs:176`).
+6. Coordinator state and dispatch routing are centralized separately from target execution: the hub turns a controller command into a `LinkMessage::Dispatch` on the agent's reverse channel (or queues it while the agent is offline), while the agent crate owns actual fault application (`crates/coordinator/src/lib.rs:351`, `crates/coordinator/src/lib.rs:660`).
 7. Reports require stable hashes, replay text, and evidence fields independent of whether the caller stores them in a file or coordinator memory (`crates/report/src/lib.rs:49`, `crates/report/src/lib.rs:92`, `crates/cli/src/main.rs:233`).
