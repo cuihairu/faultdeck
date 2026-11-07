@@ -148,3 +148,27 @@
 - [ ] 审核发现：FD-ARCH-2 将实验入队标为已完成，但 inject 只创建报告并返回 queued，未保存待执行指令，rollback 也未入队（todo.md:13）
 - [ ] 审核发现：FD-ARCH-2 将解决双向 NAT 标为已完成，但协调器未将控制指令转发到 agent，无法经中枢对双向 NAT 后的目标执行实验（todo.md:13）
 - [ ] 审核发现：FD-ARCH-2 将在线状态标为已完成，但协调器只记录心跳时间并列出全部已注册 agent，未判断连接或心跳过期状态，离线 agent 仍会出现在列表中（todo.md:13）
+
+## 源码分层分析 2026-11-07
+
+### 抽象层清单
+
+- 共享语义与安全模型：定义故障/目标契约并做内在与管理网段校验（`crates/core/src/lib.rs:108`）。
+- 策略到后端翻译层：将延迟/丢包翻译成可执行、可规划、可回滚的 tc 命令（`crates/netem/src/lib.rs:172`）。
+- 宿主执行与防护层：接收并鉴权请求、路由后端、维护跨连接的单活动故障状态（`crates/agent/src/lib.rs:171`）。
+- 线传输与拓扑层：提供有界的 NDJSON 分帧和 Mode A/Mode B 连接拓扑（`crates/agent/src/transport.rs:56`）。
+- 用户入口与报告物化层：转换 CLI 参数、执行远程调用并生成报告与回放命令（`crates/cli/src/main.rs:147`）。
+- 机群注册与控制面状态层：维护易失 Agent 注册表、报告归档和未接线的控制路由（`crates/coordinator/src/lib.rs:65`）。
+- 证据与可复现模型层：定义场景哈希、运行报告、HTML 渲染和历史 diff（`crates/report/src/lib.rs:78`）。
+
+详细术语见 `docs/glossary.md` 与 `docs/zh/glossary.md`；层落位与拆分理由见 `docs/architecture.md` 与 `docs/zh/architecture.md`。
+
+### 超大文件候选
+
+无 >1000 行文件。
+
+### 目录/分类问题
+
+- `crates/protocol/src` 是空目录，却被架构表列为占位；协议类型实际分散在 agent 和 coordinator（`crates/coordinator/src/lib.rs:98`）。建议移除目录或建立真实共享协议层时再保留。
+- CLI 自己定义并序列化 `WireRequest`/`WireResponse`，而 agent 拥有对应 `Request`/`Response`，存在无编译一致性的重复线协议定义（`crates/cli/src/main.rs:83`，`crates/agent/src/lib.rs:109`）。建议后续提取共享协议层或用同一类型导出。
+- `crates/coordinator/src/lib.rs` 从 `faultdeck-agent` 引用通用传输与常量时间比较，把传输能力和宿主库耦合进控制面依赖（`crates/coordinator/src/lib.rs:6`，`crates/coordinator/src/lib.rs:124`）。建议把传输和鉴权辅助迁移为独立共享库。

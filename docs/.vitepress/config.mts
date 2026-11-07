@@ -15,6 +15,7 @@ const enSidebar = [
       { text: 'Agents', link: '/remote-agents' },
       { text: 'Reports', link: '/reports' },
       { text: 'Configuration', link: '/configuration' },
+      { text: 'Glossary', link: '/glossary' },
     ],
   },
   {
@@ -40,6 +41,7 @@ const zhSidebar = [
       { text: 'Agent 与注册', link: '/zh/remote-agents' },
       { text: '场景报告', link: '/zh/reports' },
       { text: '配置', link: '/zh/configuration' },
+      { text: '术语表', link: '/zh/glossary' },
     ],
   },
   {
