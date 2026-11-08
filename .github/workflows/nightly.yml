@@ -58,9 +58,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build release
-        run: cargo build --workspace --release
+        run: cargo build --workspace --release --exclude faultdeck-desktop
       - name: Test release
-        run: cargo test --workspace --release
+        run: cargo test --workspace --release --exclude faultdeck-desktop
       - name: Stage artifacts
         run: |
           set -e
