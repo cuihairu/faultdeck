@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FaultDeck</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="dot"></span>
+          <h1>FaultDeck</h1>
+        </div>
+        <div class="conn">
+          <input id="host" value="127.0.0.1" aria-label="Coordinator host" />
+          <input id="port" type="number" value="7001" aria-label="Coordinator port" />
+          <input id="token" type="password" placeholder="token (optional)" aria-label="Token" />
+          <button id="connect" class="primary">Connect</button>
+          <button id="refresh">Refresh</button>
+        </div>
+      </header>
+
+      <div id="banner" class="banner hidden"></div>
+
+      <main>
+        <section id="fleet" class="panel">
+          <div class="panel-head">
+            <h2>Fleet</h2>
+            <span id="fleet-meta" class="meta"></span>
+          </div>
+          <div id="agents" class="agents"></div>
+          <div id="empty" class="empty hidden">
+            No agents registered. Start <code>faultdeck-agent</code> on the target
+            and it appears here.
+          </div>
+        </section>
+
+        <section id="reports" class="panel">
+          <div class="panel-head">
+            <h2>Reports</h2>
+            <span id="report-meta" class="meta"></span>
+          </div>
+          <div id="report-body" class="report-body">
+            <div class="empty">Select an agent with an applied fault to load its report.</div>
+          </div>
+        </section>
+      </main>
+
+      <dialog id="inject-dialog">
+        <form method="dialog" id="inject-form">
+          <h3>Inject fault</h3>
+          <p id="inject-target" class="meta"></p>
+
+          <label class="field">
+            <span>Fault</span>
+            <select id="fault-kind">
+              <option value="latency">Latency</option>
+              <option value="loss">Packet loss</option>
+              <option value="disconnect">Disconnect</option>
+            </select>
+          </label>
+
+          <label class="field" id="latency-field">
+            <span>Latency (ms)</span>
+            <input id="latency-ms" type="number" min="1" max="86400000" value="100" />
+          </label>
+
+          <label class="field hidden" id="loss-field">
+            <span>Loss (%)</span>
+            <input id="loss-percent" type="number" min="0.01" max="100" step="0.01" value="5" />
+          </label>
+
+          <label class="field checkbox hidden" id="disconnect-field">
+            <input id="all-traffic" type="checkbox" checked />
+            <span>All traffic on the target</span>
+          </label>
+
+          <fieldset class="target-grid">
+            <legend>Target</legend>
+            <label class="field">
+              <span>Source CIDR (optional)</span>
+              <input id="t-source" placeholder="10.0.0.0/24" />
+            </label>
+            <label class="field">
+              <span>Destination CIDR (optional)</span>
+              <input id="t-destination" placeholder="10.0.1.0/24" />
+            </label>
+            <label class="field">
+              <span>Destination port (optional)</span>
+              <input id="t-port" type="number" min="1" max="65535" placeholder="9000" />
+            </label>
+          </fieldset>
+
+          <p id="inject-error" class="error hidden"></p>
+
+          <menu>
+            <button value="cancel" class="ghost">Cancel</button>
+            <button id="inject-submit" type="button" class="danger">Apply fault</button>
+          </menu>
+        </form>
+      </dialog>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

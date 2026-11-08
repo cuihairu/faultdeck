@@ -1,0 +1,99 @@
+:root {
+  --bg: #0f1115;
+  --panel: #161a22;
+  --panel-2: #1d2330;
+  --border: #2a3342;
+  --text: #e6e9ef;
+  --muted: #8b96a8;
+  --accent: #4f8cff;
+  --ok: #3ddc84;
+  --warn: #ffb648;
+  --danger: #ff5c5c;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-size: 14px; }
+#app { min-height: 100vh; display: flex; flex-direction: column; }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.brand h1 { font-size: 18px; margin: 0; font-weight: 600; }
+.conn { display: flex; gap: 8px; align-items: center; }
+.conn input { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; }
+.conn input#host { width: 130px; }
+.conn input#port { width: 70px; }
+.conn input#token { width: 140px; }
+
+button {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+button.ghost { background: transparent; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.banner { padding: 8px 20px; background: #3a1d1d; color: var(--danger); border-bottom: 1px solid var(--danger); }
+.banner.hidden, .hidden { display: none !important; }
+
+main { display: grid; grid-template-columns: 380px 1fr; gap: 16px; padding: 16px 20px; flex: 1; }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.panel-head h2 { font-size: 15px; margin: 0; }
+.meta { color: var(--muted); font-size: 12px; }
+
+.agents { padding: 8px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.agent {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+}
+.agent .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.agent .id { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.agent .status { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.agent .status.online { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.agent .caps { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.agent .cap { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 11px; color: var(--muted); }
+.agent .actions { display: flex; gap: 6px; margin-top: 8px; }
+.agent .applied { font-size: 11px; color: var(--warn); margin-top: 6px; }
+.agent .lastseen { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+.empty { color: var(--muted); padding: 24px; text-align: center; }
+
+.report-body { padding: 16px; overflow-y: auto; }
+.report-body h3 { margin-top: 0; }
+.report-body pre { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 10px; overflow-x: auto; font-size: 12px; }
+.report-body table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+.report-body th, .report-body td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; font-size: 12px; }
+.report-body .pass { color: var(--ok); }
+.report-body .fail { color: var(--danger); }
+.report-body .tl { list-style: none; padding: 0; }
+.report-body .tl li { padding: 3px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.copybtn { margin-left: 8px; }
+
+dialog {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 10px; width: 460px; padding: 0;
+}
+dialog::backdrop { background: rgba(0,0,0,0.55); }
+dialog form { padding: 20px; }
+dialog h3 { margin: 0 0 8px; }
+.field { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+.field span { font-size: 12px; color: var(--muted); }
+.field input, .field select {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 10px; border-radius: 6px;
+}
+.field.checkbox { flex-direction: row; align-items: center; gap: 8px; }
+.field.checkbox span { color: var(--text); font-size: 14px; }
+.target-grid { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 14px; }
+.target-grid legend { color: var(--muted); padding: 0 6px; font-size: 12px; }
+.error { color: var(--danger); font-size: 13px; margin: 10px 0 0; }
+menu { display: flex; justify-content: flex-end; gap: 8px; margin: 18px 0 0; padding: 0; }
