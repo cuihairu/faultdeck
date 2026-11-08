@@ -14,6 +14,23 @@
 
 已实现的故障类型:延迟、丢包、断连(iptables)。黑洞与带宽限制在计划中。故障目前通过 CLI 按目标逐条下发;进房断网重连、战斗结算丢包重试、双服脑裂、Redis/DB 超时阻塞游戏逻辑等预置游戏场景模板在 P2 路线图。不绑定 KBEngine 或单一游戏服务器。
 
+## 每日构建
+
+最新滚动构建请到 **Releases 页**(`nightly` 发布)获取:
+
+- **https://github.com/cuihairu/faultdeck/releases/tag/nightly**
+
+每天 05:17(北京时间)落一个新构建。按平台选择资产:
+
+| 资产 | 平台 | 验证 |
+|---|---|---|
+| `faultdeck-linux-x86_64` | Linux x86_64 | `./faultdeck --version` |
+| `faultdeck-linux-aarch64` | Linux ARM64 | `./faultdeck --version` |
+| `faultdeck-agent-*` | 代理(同平台) | `./faultdeck-agent --version` |
+| `faultdeck-coordinator-*` | 协调器(同平台) | `./faultdeck-coordinator --version` |
+
+每个资产附带 `.sha256` 校验和;只保留最新一份构建(旧的会被替换,不会累积)。二进制未签名——SmartScreen/Gatekeeper 可能告警。
+
 ## 核心理念
 
 - **实验 DSL 描述故障语义,Backend 决定实现方式**;Backend 不支持精确语义时返回「不支持」,不做静默近似

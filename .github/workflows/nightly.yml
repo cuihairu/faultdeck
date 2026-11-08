@@ -2,46 +2,132 @@ name: nightly
 
 on:
   schedule:
-    # 21:00 UTC daily
-    - cron: "0 21 * * *"
+    # Off-peak non-round minute (21:17 UTC = 05:17 CST daily)
+    - cron: "17 21 * * *"
   workflow_dispatch:
     inputs:
       release:
-        description: "Create/refresh the rolling nightly release"
+        description: "Force publish the rolling nightly release now"
         required: false
         default: "false"
 
+permissions:
+  contents: write
+
 jobs:
-  build:
+  gate:
+    name: Staleness gate (48h)
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    outputs:
+      should_build: ${{ steps.gate.outputs.should_build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: gate
+        name: Skip when no fresh commits
+        run: |
+          # manual trigger always builds; schedule honors the 48h gate
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "manual trigger — always build"
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          head_age=$(( $(date +%s) - $(git log -1 --format=%ct) ))
+          echo "HEAD age: ${head_age}s"
+          if [ "$head_age" -le $((48*3600)) ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "no fresh commits in 48h — skipping build"
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: gate
+    if: needs.gate.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64 }
+          - { name: linux-aarch64 }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --workspace --release
-      - run: cargo test --workspace --release
+      - name: Build release
+        run: cargo build --workspace --release
+      - name: Test release
+        run: cargo test --workspace --release
       - name: Stage artifacts
         run: |
+          set -e
           mkdir -p dist
           for bin in faultdeck faultdeck-agent faultdeck-coordinator; do
-            cp target/release/$bin dist/$bin-linux-x86_64
+            if [ -x "target/release/$bin" ]; then
+              cp "target/release/$bin" "dist/$bin-${{ matrix.name }}"
+              sha256sum "dist/$bin-${{ matrix.name }}" > "dist/$bin-${{ matrix.name }}.sha256"
+            fi
           done
+          {
+            echo "FaultDeck nightly build"
+            echo "platform: ${{ matrix.name }}"
+            echo "built:    $(date -u +'%Y-%m-%d %H:%M UTC')"
+            echo "commit:   ${GITHUB_SHA}"
+            echo "verify:   ./faultdeck --version"
+            echo "caveat:   unsigned binary — SmartScreen/Gatekeeper may warn"
+          } > "dist/PLATFORM-NOTES-${{ matrix.name }}.txt"
       - uses: actions/upload-artifact@v4
         with:
-          name: faultdeck-nightly-linux-x86_64
+          name: pkg-${{ matrix.name }}
           path: dist/
-          if-no-files-found: error
-      - name: Refresh rolling nightly release
-        if: github.event_name == 'workflow_dispatch' && inputs.release == 'true'
+          retention-days: 1
+
+  publish:
+    name: Publish rolling nightly
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          merge-multiple: true
+          path: pkgs
+      - id: stamp
+        name: Capture run start
+        run: echo "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - name: Publish to rolling nightly Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RUN_STARTED: ${{ steps.stamp.outputs.started }}
         run: |
+          set -e
           tag=nightly
-          stamp=$(date -u +%Y%m%d)
-          gh release delete "$tag" --yes --cleanup-tag || true
-          gh release create "$tag" dist/* \
+          gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$tag" pkgs/* \
             --target "$GITHUB_SHA" \
-            --title "nightly $stamp" \
-            --notes "Rolling nightly build of ${{ github.sha }} (linux-x86_64, built with stable rust)."
+            --title "nightly $(date -u +%Y-%m-%d)" \
+            --notes "Rolling nightly build of ${GITHUB_SHA} (linux-x86_64, linux-aarch64, built with stable rust). This is a rolling prerelease binary, not a versioned release." || true
+          gh release edit "$tag" --draft=false 2>/dev/null || true
+          released_at=$(gh release view "$tag" --json publishedAt --jq .publishedAt)
+          echo "release publishedAt=$released_at run started=$RUN_STARTED"
+          if [ -z "$released_at" ]; then
+            echo "FAIL: release has no publishedAt" >&2
+            exit 1
+          fi
+          asset_count=$(gh release view "$tag" --json assets --jq 'length')
+          echo "assets=$asset_count"
+          if [ "$asset_count" -eq 0 ]; then
+            echo "FAIL: zero assets on nightly" >&2
+            exit 1
+          fi
+      - name: Summary
+        run: |
+          {
+            echo "## FaultDeck nightly"
+            echo "- rolling Release **nightly** (only copy; history cleaned)"
+            echo "- download: https://github.com/cuihairu/faultdeck/releases/tag/nightly"
+          } >> "$GITHUB_STEP_SUMMARY"

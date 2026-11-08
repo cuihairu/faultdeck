@@ -13,6 +13,23 @@ English · [中文文档](README.zh.md)
 
 Shipped fault types: latency, packet loss, disconnect (iptables). Blackhole and bandwidth throttle are planned. Faults are composed per target with the CLI today; prebuilt game scenario templates (disconnect-on-room-join and reconnect, combat settlement packet-loss retry, dual-server brain split, Redis/DB timeouts blocking game logic) are on the P2 roadmap. Not bound to KBEngine or any single game server.
 
+## Daily Builds
+
+Get the latest rolling build from the **Releases page** (the `nightly` release):
+
+- **https://github.com/cuihairu/faultdeck/releases/tag/nightly**
+
+A new build lands daily (05:17 CST). Choose your asset:
+
+| Asset | Platform | Verify |
+|---|---|---|
+| `faultdeck-linux-x86_64` | Linux x86_64 | `./faultdeck --version` |
+| `faultdeck-linux-aarch64` | Linux ARM64 | `./faultdeck --version` |
+| `faultdeck-agent-*` | FaultDeck agent (same platform) | `./faultdeck-agent --version` |
+| `faultdeck-coordinator-*` | Coordinator (same platform) | `./faultdeck-coordinator --version` |
+
+Each asset ships with a `.sha256` checksum; the latest build is always the only copy (older builds are replaced, never accumulated). Binaries are unsigned — SmartScreen/Gatekeeper may warn.
+
 ## Core Principles
 
 - **The experiment DSL describes fault semantics; the backend decides implementation.** If a backend cannot honor the exact semantics, it returns "unsupported" — never a silent approximation.
