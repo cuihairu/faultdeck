@@ -46,13 +46,13 @@ jobs:
     name: Build (${{ matrix.name }})
     needs: gate
     if: needs.gate.outputs.should_build == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: linux-x86_64 }
-          - { name: linux-aarch64 }
+          - { os: ubuntu-latest, name: linux-x86_64 }
+          - { os: ubuntu-24.04-arm, name: linux-aarch64 }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -65,10 +65,11 @@ jobs:
         run: |
           set -e
           mkdir -p dist
+          cd dist
           for bin in faultdeck faultdeck-agent faultdeck-coordinator; do
-            if [ -x "target/release/$bin" ]; then
-              cp "target/release/$bin" "dist/$bin-${{ matrix.name }}"
-              sha256sum "dist/$bin-${{ matrix.name }}" > "dist/$bin-${{ matrix.name }}.sha256"
+            if [ -x "../target/release/$bin" ]; then
+              cp "../target/release/$bin" "$bin-${{ matrix.name }}"
+              sha256sum "$bin-${{ matrix.name }}" > "$bin-${{ matrix.name }}.sha256"
             fi
           done
           {
