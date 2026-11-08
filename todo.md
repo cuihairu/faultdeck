@@ -14,6 +14,8 @@
   - commit e41d3f5 + 775ae20;测试 coordinator 18 + cli hub 1;跨机 NAT/mTLS 实测 BLOCKED(仍缺跨 NAT 双机环境与 mTLS 对端/证书);在线指令分发已接线(见 FD-ARCH-2-DISPATCH)
 - [x] FD-ARCH-2-DISPATCH [P1] coordinator 在线指令分发:向已注册 agent 的活动连接实际下发 inject/rollback 并回传结果。
   - commit 775ae20;测试 coordinator 18(含真实 TCP 链路下发/断线失败/离线入队补发/超时)+ cli hub 端到端 1;inject/rollback 真实入队并沿 agent 反向链路下发、结果回传合入报告(lib.rs:351 submit_control、lib.rs:660 spawn_dispatcher、link.rs:140 pump_dispatches);跨 NAT 双机真机实测 BLOCKED(仅缺双机网络环境,协议链路已由同机 TCP 集成测试覆盖)
+- [x] FD-DESKTOP-1 [P1] 桌面 UI(Tauri):车群/注入/报告三视图,Rust 侧直连 coordinator 走 wire 协议。
+  - commit 61d323d + cf200d6;设计 docs/design/desktop-ui.md;Tauri 壳 crates/desktop(Rust 命令 coordinator_list/inject/rollback/report + 前端 pnpm/Vite/vanilla TS);wire 契约测试 5(单测)+ 全工作区测试绿;CI desktop job 装 webkit2gtk 系统依赖后构建,主 job 用 --exclude faultdeck-desktop;构建产物为平台安装器(见 nightly 资产矩阵)
 
 ## 评审修复 2026-11-03(netem)
 
