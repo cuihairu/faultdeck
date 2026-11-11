@@ -589,11 +589,112 @@ fn dispatch_to_silent_agent_times_out() {
             injection: injection(),
         },
     );
+    // Timeout is outcome-unknown, not an execution failure: the command stays
+    // in flight and the late result must still land in the report.
     assert!(
-        matches!(&resp, AgentResponse::Error { message } if message.contains("timed out")),
-        "expected dispatch timeout, got {resp:?}"
+        matches!(&resp, AgentResponse::TimedOut { agent_id } if agent_id == "mute-01"),
+        "expected dispatch timeout receipt, got {resp:?}"
     );
     silent.join().unwrap();
+}
+
+#[test]
+fn late_result_after_timeout_is_still_recorded() {
+    // Regression (audit 2026-11-11 P1.2): a controller that saw the dispatch
+    // timeout must be able to trust that the late execution result is applied
+    // and folded into the archived report — "timed out" must not read as
+    // "not executed".
+    use faultdeck_agent::link::{LinkMessage, RegisterEnvelope};
+    use faultdeck_agent::transport::{read_frame, send_frame};
+    use std::io::{BufReader, BufWriter};
+
+    let state = Arc::new(Mutex::new(CoordinatorState::default()));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let state_thread = state.clone();
+    std::thread::spawn(move || {
+        let _ = serve_on_with_options(state_thread, listener, None, Duration::from_millis(300));
+    });
+
+    // Agent that stalls past the 300ms dispatch timeout, then answers.
+    let late = std::thread::spawn(move || {
+        let stream = TcpStream::connect(addr).unwrap();
+        let mut writer = BufWriter::new(stream.try_clone().unwrap());
+        send_frame(
+            &mut writer,
+            &RegisterEnvelope {
+                token: None,
+                id: "late-01".into(),
+                capabilities: vec!["netem".into()],
+            },
+        )
+        .unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let _ack: AgentResponse = read_frame(&mut reader).unwrap();
+        let dispatch: LinkMessage = read_frame(&mut reader).unwrap();
+        // Hold the dispatch until the controller's timeout has fired...
+        std::thread::sleep(Duration::from_millis(500));
+        let LinkMessage::Dispatch {
+            request_id,
+            request,
+        } = dispatch
+        else {
+            panic!("expected dispatch");
+        };
+        assert!(matches!(request, faultdeck_agent::Request::Inject(_)));
+        send_frame(
+            &mut writer,
+            &LinkMessage::Result {
+                request_id,
+                response: faultdeck_agent::Response::Ok {
+                    message: "fault applied".into(),
+                },
+            },
+        )
+        .unwrap();
+        // Keep the link alive while the coordinator routes the late result.
+        std::thread::sleep(Duration::from_millis(400));
+    });
+
+    wait_for_available(&addr, "late-01");
+    let injection = injection();
+    let scenario = faultdeck_report::Scenario {
+        name: "late-01-injection".into(),
+        injection: injection.clone(),
+    };
+    let hash = scenario.hash();
+    let resp = send_wire(
+        &addr,
+        AgentCommand::Inject {
+            id: "late-01".into(),
+            injection,
+        },
+    );
+    assert!(
+        matches!(&resp, AgentResponse::TimedOut { agent_id } if agent_id == "late-01"),
+        "expected timeout receipt, got {resp:?}"
+    );
+
+    late.join().unwrap();
+
+    // The late execution result was applied and recorded despite the timeout.
+    let st = state.lock().unwrap();
+    assert_eq!(
+        st.applied.get("late-01").map(String::as_str),
+        Some(hash.as_str())
+    );
+    let report = st
+        .reports
+        .get(&hash)
+        .expect("report stub must exist for the scenario hash");
+    assert!(
+        report
+            .events
+            .iter()
+            .any(|e| e.kind == "dispatch" && e.message.contains("fault applied")),
+        "late dispatch result must be folded into the report, got {:?}",
+        report.events
+    );
 }
 
 #[test]

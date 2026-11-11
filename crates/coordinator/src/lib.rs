@@ -37,8 +37,6 @@ pub enum CoordinatorError {
     NotRegistered(String),
     #[error("agent {0} has no active connection")]
     NotConnected(String),
-    #[error("dispatch to {0} timed out; command remains queued")]
-    DispatchTimedOut(String),
     #[error("unauthorized: missing or invalid token")]
     Unauthorized,
     #[error("invalid injection: {0}")]
@@ -91,6 +89,14 @@ pub enum AgentResponse {
     Queued {
         agent_id: String,
         pending: u64,
+    },
+    /// The dispatch wait expired before the agent replied. This is *not* an
+    /// execution failure: the command stays in flight (or queued) and its
+    /// eventual result is still applied and folded into the archived report.
+    /// Controllers must not assume the fault was not applied; check the
+    /// report or `list_agents` before re-injecting.
+    TimedOut {
+        agent_id: String,
     },
     /// Agent list with per-agent online status plus the ids of online agents.
     Agents {
@@ -385,7 +391,14 @@ impl Coordinator {
                 AgentResponseMsg::Ok { message } => AgentResponse::Ok { message },
                 AgentResponseMsg::Error { message } => AgentResponse::Error { message },
             }),
-            Err(_) => Err(CoordinatorError::DispatchTimedOut(agent_id.into())),
+            // Timeout is an *outcome-unknown* answer, not an error: the
+            // dispatcher already handed the command to the live link, so the
+            // agent may still execute it and the late result will be applied
+            // and recorded by `route_result`. Surfacing it as an error would
+            // invite double injection or an abandoned rollback.
+            Err(_) => Ok(AgentResponse::TimedOut {
+                agent_id: agent_id.into(),
+            }),
         }
     }
 }

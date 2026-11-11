@@ -26,7 +26,9 @@ mod wire {
     #[serde(tag = "cmd", rename_all = "snake_case")]
     pub enum AgentCommand {
         Register(RegisterRequest),
-        Heartbeat { id: String },
+        Heartbeat {
+            id: String,
+        },
         Inject {
             id: String,
             injection: faultdeck_core::Injection,
@@ -64,10 +66,22 @@ mod wire {
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(tag = "status", rename_all = "snake_case")]
     pub enum AgentResponse {
-        Ok { message: String },
-        Error { message: String },
-        Registered { id: String },
-        Queued { agent_id: String, pending: u64 },
+        Ok {
+            message: String,
+        },
+        Error {
+            message: String,
+        },
+        Registered {
+            id: String,
+        },
+        Queued {
+            agent_id: String,
+            pending: u64,
+        },
+        TimedOut {
+            agent_id: String,
+        },
         Agents {
             agents: Vec<AgentIdentity>,
             available: Vec<String>,
@@ -143,7 +157,11 @@ fn send_command(
 
 /// Fleet view: every registered agent with live online status.
 #[tauri::command]
-fn coordinator_list(host: String, port: u16, token: Option<String>) -> Result<AgentResponse, UiError> {
+fn coordinator_list(
+    host: String,
+    port: u16,
+    token: Option<String>,
+) -> Result<AgentResponse, UiError> {
     send_command(&host, port, token, AgentCommand::ListAgents)
 }
 

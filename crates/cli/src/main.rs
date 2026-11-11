@@ -195,6 +195,12 @@ fn print_hub_response(response: AgentResponse) -> anyhow::Result<()> {
         AgentResponse::Queued { agent_id, pending } => {
             println!("queued for {agent_id} (pending {pending})")
         }
+        AgentResponse::TimedOut { agent_id } => {
+            println!(
+                "dispatch to {agent_id} timed out; the command is still in flight and its \
+                 result will be recorded — check the report or `hub list` before re-injecting"
+            )
+        }
         AgentResponse::Agents { agents, available } => {
             for a in &agents {
                 println!(
