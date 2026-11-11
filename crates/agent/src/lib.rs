@@ -249,7 +249,7 @@ pub fn handle_connection<E>(
     config: &Arc<AgentConfig>,
     adapter: &NetemAdapter<E>,
     firewall: &Iptables,
-    applied: &mut HashSet<String>,
+    applied: &Mutex<HashSet<String>>,
     stream: TcpStream,
 ) -> Result<()>
 where
@@ -319,7 +319,15 @@ where
             return Ok(());
         }
     }
-    let response = process_request(config, adapter, firewall, request, applied);
+    // Lock only for the fault-apply itself: auth, parsing, and validation run
+    // without the guard so a silent client cannot hold it while reading.
+    let response = process_request(
+        config,
+        adapter,
+        firewall,
+        request,
+        &mut applied.lock().unwrap(),
+    );
     let _ = writer.write_all(format!("{}\n", serde_json::to_string(&response)?).as_bytes());
     Ok(())
 }
@@ -342,10 +350,17 @@ pub fn serve_on(
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                // One thread per connection: a slow or silent client must not
+                // stall the accept loop. `applied` is only locked for the
+                // duration of `process_request` (inside `handle_connection`),
+                // so a client mid-read cannot cut off the rollback channel.
                 let cfg = config.clone();
                 let adapter = adapter.clone();
-                let mut applied = applied.lock().unwrap();
-                let _ = handle_connection(&cfg, &adapter, &firewall, &mut applied, stream);
+                let firewall = firewall.clone();
+                let applied = applied.clone();
+                std::thread::spawn(move || {
+                    let _ = handle_connection(&cfg, &adapter, &firewall, &applied, stream);
+                });
             }
             Err(e) => eprintln!("accept error: {e}"),
         }

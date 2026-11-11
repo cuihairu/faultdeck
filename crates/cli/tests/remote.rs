@@ -23,12 +23,12 @@ fn cli_remote_ping_integration() {
     };
     std::thread::spawn(move || {
         if let Ok((stream, _)) = listener.accept() {
-            let mut applied = std::collections::HashSet::new();
+            let applied = std::sync::Mutex::new(std::collections::HashSet::new());
             let _ = handle_connection(
                 &std::sync::Arc::new(cfg),
                 &adapter,
                 &firewall,
-                &mut applied,
+                &applied,
                 stream,
             );
         }
@@ -62,12 +62,12 @@ fn cli_replay_command_includes_all_fault_parameters() {
     };
     std::thread::spawn(move || {
         if let Ok((stream, _)) = listener.accept() {
-            let mut applied = std::collections::HashSet::new();
+            let applied = std::sync::Mutex::new(std::collections::HashSet::new());
             let _ = faultdeck_agent::handle_connection(
                 &std::sync::Arc::new(cfg),
                 &adapter,
                 &firewall,
-                &mut applied,
+                &applied,
                 stream,
             );
         }
@@ -141,12 +141,12 @@ fn cli_replay_command_quotes_shell_metacharacters() {
     std::thread::spawn(move || {
         for _ in 0..2 {
             if let Ok((stream, _)) = listener.accept() {
-                let mut applied = std::collections::HashSet::new();
+                let applied = std::sync::Mutex::new(std::collections::HashSet::new());
                 let _ = faultdeck_agent::handle_connection(
                     &std::sync::Arc::new(cfg.clone()),
                     &adapter,
                     &firewall,
-                    &mut applied,
+                    &applied,
                     stream,
                 );
             }
@@ -225,12 +225,12 @@ fn cli_replay_command_quotes_embedded_single_quotes() {
     std::thread::spawn(move || {
         for _ in 0..2 {
             if let Ok((stream, _)) = listener.accept() {
-                let mut applied = std::collections::HashSet::new();
+                let applied = std::sync::Mutex::new(std::collections::HashSet::new());
                 let _ = faultdeck_agent::handle_connection(
                     &std::sync::Arc::new(cfg.clone()),
                     &adapter,
                     &firewall,
-                    &mut applied,
+                    &applied,
                     stream,
                 );
             }
@@ -307,12 +307,12 @@ fn cli_replay_command_handles_dash_leading_token() {
     std::thread::spawn(move || {
         for _ in 0..2 {
             if let Ok((stream, _)) = listener.accept() {
-                let mut applied = std::collections::HashSet::new();
+                let applied = std::sync::Mutex::new(std::collections::HashSet::new());
                 let _ = faultdeck_agent::handle_connection(
                     &std::sync::Arc::new(cfg.clone()),
                     &adapter,
                     &firewall,
-                    &mut applied,
+                    &applied,
                     stream,
                 );
             }

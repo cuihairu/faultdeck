@@ -72,12 +72,12 @@ fn roundtrip_ping_and_rollback() {
     };
     std::thread::spawn(move || {
         if let Ok((stream, _)) = listener.accept() {
-            let mut applied = std::collections::HashSet::new();
+            let applied = std::sync::Mutex::new(std::collections::HashSet::new());
             let _ = handle_connection(
                 &std::sync::Arc::new(cfg),
                 &adapter,
                 &firewall,
-                &mut applied,
+                &applied,
                 stream,
             );
         }
@@ -107,14 +107,14 @@ fn roundtrip_inject_then_rollback() {
         runner: None,
     };
     std::thread::spawn(move || {
-        let mut applied = std::collections::HashSet::new();
+        let applied = std::sync::Mutex::new(std::collections::HashSet::new());
         for _ in 0..2 {
             if let Ok((stream, _)) = listener.accept() {
                 let _ = handle_connection(
                     &std::sync::Arc::new(cfg.clone()),
                     &adapter,
                     &firewall,
-                    &mut applied,
+                    &applied,
                     stream,
                 );
             }
@@ -157,12 +157,12 @@ fn unauthorized_rejected_without_crash() {
     };
     std::thread::spawn(move || {
         if let Ok((stream, _)) = listener.accept() {
-            let mut applied = std::collections::HashSet::new();
+            let applied = std::sync::Mutex::new(std::collections::HashSet::new());
             let _ = handle_connection(
                 &std::sync::Arc::new(cfg),
                 &adapter,
                 &firewall,
-                &mut applied,
+                &applied,
                 stream,
             );
         }
@@ -173,6 +173,68 @@ fn unauthorized_rejected_without_crash() {
     let mut buf = String::new();
     stream.read_to_string(&mut buf).unwrap();
     assert!(buf.contains("unauthorized"));
+}
+
+#[test]
+fn silent_connection_does_not_block_other_clients() {
+    // Regression (audit 2026-11-11 P1.1): the accept loop processed
+    // connections synchronously and held the applied lock across the whole
+    // request read, so one silent client stalled the agent and cut off the
+    // rollback channel. Now each connection gets its own thread and the lock
+    // is held only for process_request, so this must complete.
+    use std::time::Duration;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let cfg = config();
+    let adapter = NetemAdapter::dry_run("eth0");
+    let firewall = Iptables {
+        dry_run: true,
+        path: None,
+        runner: None,
+    };
+    std::thread::spawn(move || {
+        serve_on(
+            cfg,
+            adapter,
+            firewall,
+            listener,
+            std::collections::HashSet::new(),
+        )
+        .unwrap();
+    });
+
+    // A client that connects and never sends a line.
+    let silent = TcpStream::connect(addr).unwrap();
+    silent
+        .set_read_timeout(Some(Duration::from_millis(100)))
+        .ok();
+
+    // ...must not stop another client from injecting.
+    let injection = serde_json::to_string(&Request::Inject(latency())).unwrap();
+    let mut client = TcpStream::connect(addr).unwrap();
+    client.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    client
+        .write_all(format!("{injection}\n").as_bytes())
+        .unwrap();
+    let mut buf = String::new();
+    client.read_to_string(&mut buf).unwrap();
+    assert!(
+        buf.contains("fault applied"),
+        "inject was blocked by a silent client: {buf}"
+    );
+
+    // ...nor from rolling the fault back.
+    let mut client = TcpStream::connect(addr).unwrap();
+    client.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    client.write_all(b"{\"cmd\":\"rollback\"}\n").unwrap();
+    let mut buf = String::new();
+    client.read_to_string(&mut buf).unwrap();
+    assert!(
+        buf.contains("rolled back"),
+        "rollback was blocked by a silent client: {buf}"
+    );
+    drop(silent);
 }
 
 #[test]
@@ -305,12 +367,12 @@ fn handle_connection_writes_json_error_response() {
     };
     let thread = std::thread::spawn(move || {
         if let Ok((stream, _)) = listener.accept() {
-            let mut applied = std::collections::HashSet::new();
+            let applied = std::sync::Mutex::new(std::collections::HashSet::new());
             let _ = handle_connection(
                 &std::sync::Arc::new(cfg),
                 &adapter,
                 &firewall,
-                &mut applied,
+                &applied,
                 stream,
             );
         }
