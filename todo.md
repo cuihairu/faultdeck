@@ -154,6 +154,19 @@
 - [x] 审核发现：FD-ARCH-2 将在线状态标为已完成，但协调器只记录心跳时间并列出全部已注册 agent，未判断连接或心跳过期状态，离线 agent 仍会出现在列表中（todo.md:13）
   - 修复：在线判定=链路存活或心跳在 HEARTBEAT_TIMEOUT_MS 30 s 内（crates/coordinator/src/lib.rs:211 is_online），list 逐项标注 AgentIdentity.online、available 剔除离线（lib.rs:191/203）；测试 list_marks_offline_after_heartbeat_expiry、list_marks_online_while_link_live_and_offline_after_drop；证据 commit 775ae20
 
+## 巡检修复批 2026-11-11 (faultdeck-audit-fix.md)
+
+- [x] P1.1 agent 监听循环同步处理连接并全程持有 applied 锁，一个慢客户端阻塞整个 agent、切断 rollback 通道（crates/agent/src/lib.rs:342-352）
+  - 修复：accept 循环改为每连接一线程，锁仅在 process_request 期间持有（crates/agent/src/lib.rs:370-386 serve_on、lib.rs:343-349 handle_connection）；测试 silent_connection_does_not_block_other_clients；证据 commit 9bcd04c
+- [x] P1.2 coordinator 在线分发超时语义混乱：超时报为失败但指令仍会执行，操作员可能重复注入或放弃回滚（crates/coordinator/src/lib.rs:383-388）
+  - 修复：移除 DispatchTimedOut 错误变体，超时返回 AgentResponse::TimedOut（结果未知，迟到结果仍会合入报告），CLI 打印在途提示（crates/cli/src/main.rs:204-209）；测试 dispatch_to_silent_agent_times_out、late_result_after_timeout_is_still_recorded；证据 commit 02b892b
+- [x] P1.3 远端 rollback 不回写报告：报告永远显示未回滚（README 称回滚是 MVP 验收门，数据失真）
+  - 修复：remote rollback 接受 --report-json/--report-html 并回写 rolled_back_at_ms + rollback 事件（crates/cli/src/main.rs:369-388）；测试 cli_rollback_updates_the_inject_report；证据 commit e070b4c
+- [x] P1.4 firewall apply 按 networks() 迭代猜 source/dest，source==dest 时 -s 发两次、-d 从不发（crates/agent/src/firewall.rs:144-148）
+  - 修复：按角色显式生成 -s source / -d destination 规则（crates/agent/src/firewall.rs:140-147）；测试 apply_emits_both_rules_when_source_equals_destination；证据 commit bc6b467
+- [x] P1.5 agent 默认无 token，非回环绑定不拒绝——能落 DROP 规则的守护进程应 fail-closed
+  - 修复：serve_on 在 accept 前校验实际绑定地址，非回环且无 token 返回 InsecureBind（crates/agent/src/lib.rs:162-169 require_secure_bind、lib.rs:366-371 serve_on）；测试 require_secure_bind_fails_closed_without_token、serve_on_refuses_non_loopback_listener_without_token；cargo test --workspace 全绿（89 passed, 0 failed）；证据 commit ba1fa9e
+
 ## 源码分层分析 2026-11-07
 
 ### 抽象层清单
