@@ -1,4 +1,4 @@
-use std::io::{Read, Write};
+use std::io::{BufReader, Write};
 use std::net::TcpStream;
 use std::str::FromStr;
 use std::time::Duration;
@@ -257,13 +257,24 @@ fn send(
         line = format!("{tok} {body}\n");
     }
     stream.write_all(line.as_bytes())?;
-    let mut response = String::new();
-    if let Err(e) = stream.read_to_string(&mut response) {
-        if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut {
-            anyhow::bail!("timed out after {timeout_secs}s waiting for {host}:{port}");
-        }
-        return Err(e.into());
-    }
+    // Bound the response read: read_to_string would buffer an unbounded
+    // peer-controlled payload before any size check could run (audit
+    // 2026-11-11 P2). The response is one newline-delimited JSON line, so
+    // read the line with the same ceiling the agent enforces on requests.
+    let mut reader = BufReader::new(stream);
+    let response =
+        match faultdeck_agent::read_line_limited(&mut reader, faultdeck_agent::MAX_INJECTION_BYTES)
+        {
+            Ok(line) => line,
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut
+                {
+                    anyhow::bail!("timed out after {timeout_secs}s waiting for {host}:{port}");
+                }
+                return Err(e.into());
+            }
+        };
     let parsed: WireResponse = serde_json::from_str(response.trim())?;
     match parsed {
         WireResponse::Ok { message } => Ok(message),

@@ -536,3 +536,47 @@ fn cli_rollback_updates_the_inject_report() {
     std::fs::remove_file(&report).unwrap();
     std::fs::remove_file(&html).unwrap();
 }
+
+#[test]
+fn cli_bails_on_oversized_response() {
+    // Regression (audit 2026-11-11 P2): the response read used
+    // read_to_string, buffering an unbounded peer-controlled payload before
+    // any size check could run. A peer streaming more than the 64 KiB line
+    // ceiling must produce a clear error, not balloon memory.
+    use std::io::Write;
+    use std::net::TcpListener;
+    use std::process::Command;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let junk = vec![b'a'; 128 * 1024];
+        let _ = stream.write_all(&junk);
+        // Give the client time to read past the ceiling before closing.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_faultdeck"))
+        .env("FAULTDECK_TIMEOUT_SECS", "2")
+        .args([
+            "remote",
+            "ping",
+            "--host",
+            &addr.ip().to_string(),
+            "--port",
+            &addr.port().to_string(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        !output.status.success(),
+        "CLI must fail on an oversized response"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("maximum size"),
+        "expected the bounded-read error, got: {stderr}"
+    );
+    server.join().unwrap();
+}
