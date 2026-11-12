@@ -62,27 +62,62 @@ fn wait_for_available(addr: &std::net::SocketAddr, id: &str) {
 
 #[test]
 fn register_heartbeat_list() {
+    // Regression (audit 2026-11-11 P2): a control-channel heartbeat for a
+    // registered agent with NO live link used to refresh last_seen_ms, so any
+    // reachable controller could keep a dead agent listed as online. Liveness
+    // is proven by the reverse link, not by a heartbeat anyone can replay.
     let coordinator = Coordinator::new();
     assert!(matches!(
         coordinator.handle_control_command(&register("agent-1"), None).unwrap(),
         AgentResponse::Registered { id } if id == "agent-1"
     ));
     assert!(matches!(
-        coordinator
-            .handle_control_command(
-                &AgentCommand::Heartbeat {
-                    id: "agent-1".into()
-                },
-                None
-            )
-            .unwrap(),
-        AgentResponse::Ok { .. }
+        coordinator.handle_control_command(
+            &AgentCommand::Heartbeat {
+                id: "agent-1".into()
+            },
+            None
+        ),
+        Err(CoordinatorError::NotConnected(_))
     ));
+    assert!(matches!(
+        coordinator.handle_control_command(
+            &AgentCommand::Heartbeat {
+                id: "never-registered".into()
+            },
+            None
+        ),
+        Err(CoordinatorError::NotRegistered(_))
+    ));
+    // The refused heartbeat must not have forged online status.
     let listed = coordinator
         .handle_control_command(&AgentCommand::ListAgents, None)
         .unwrap();
     assert!(matches!(listed, AgentResponse::Agents { agents, available }
-        if agents.len() == 1 && available == vec!["agent-1".to_string()]));
+        if agents.len() == 1 && !agents[0].online && available.is_empty()));
+}
+
+#[test]
+fn heartbeat_accepted_for_linked_agent() {
+    // An agent holding a live reverse link is genuinely online, so its
+    // heartbeat is honored (link presence already proves liveness).
+    let state = Arc::new(Mutex::new(CoordinatorState::default()));
+    let serve_state = state.clone();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        let _ = serve_on_with_options(serve_state, listener, None, Duration::from_secs(2));
+    });
+    let recorded = Arc::new(Mutex::new(Vec::<String>::new()));
+    spawn_agent_link(addr, recorded.clone());
+    wait_for_available(&addr, "game-01");
+    let resp = send_wire(
+        &addr,
+        AgentCommand::Heartbeat {
+            id: "game-01".into(),
+        },
+    );
+    assert!(matches!(resp, AgentResponse::Ok { .. }), "got {resp:?}");
 }
 
 #[test]

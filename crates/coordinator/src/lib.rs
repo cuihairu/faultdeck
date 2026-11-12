@@ -287,19 +287,22 @@ impl Coordinator {
                 })
             }
             AgentCommand::Heartbeat { id } => {
-                if self
-                    .state
-                    .lock()
-                    .unwrap()
-                    .heartbeat(id, faultdeck_report::now_ms())
-                    .is_some()
-                {
-                    Ok(AgentResponse::Ok {
-                        message: "heartbeat ok".into(),
-                    })
-                } else {
-                    Err(CoordinatorError::NotRegistered(id.clone()))
+                let mut state = self.state.lock().unwrap();
+                // A heartbeat over the control channel cannot by itself prove
+                // liveness: only an agent holding a live reverse link is
+                // genuinely online. Without this gate, any reachable controller
+                // could keep a dead agent listed as online by replaying
+                // heartbeats (audit 2026-11-11 P2).
+                if !state.agents.contains_key(id) {
+                    return Err(CoordinatorError::NotRegistered(id.clone()));
                 }
+                if !state.links.contains_key(id) {
+                    return Err(CoordinatorError::NotConnected(id.clone()));
+                }
+                state.heartbeat(id, faultdeck_report::now_ms());
+                Ok(AgentResponse::Ok {
+                    message: "heartbeat ok".into(),
+                })
             }
             AgentCommand::ListAgents => {
                 let state = self.state.lock().unwrap();
