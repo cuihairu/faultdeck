@@ -254,7 +254,10 @@ fn send(
     let body = serde_json::to_string(request)?;
     let mut line = format!("{body}\n");
     if let Some(tok) = token {
-        line = format!("{tok} {body}\n");
+        // Percent-encode the token so one containing a space (or other
+        // non-unreserved byte) does not split the header (audit 2026-11-11
+        // P2: "token with spaces can't auth").
+        line = format!("{} {body}\n", faultdeck_agent::encode_token(tok));
     }
     stream.write_all(line.as_bytes())?;
     // Bound the response read: read_to_string would buffer an unbounded

@@ -64,6 +64,46 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
+/// Percent-encode a token for the space-delimited control header so a token
+/// that itself contains a space (or another non-unreserved byte) cannot be
+/// mistaken for the header delimiter between token and JSON (audit 2026-11-11
+/// P2: "token with spaces can't auth"). Unreserved bytes pass through, so a
+/// plain token is unchanged on the wire.
+pub fn encode_token(token: &str) -> String {
+    let mut out = String::with_capacity(token.len());
+    for b in token.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push('%');
+            out.push_str(&format!("{b:02X}"));
+        }
+    }
+    out
+}
+
+/// Inverse of [`encode_token`]. A malformed escape is left verbatim: it will
+/// simply not equal the configured token, so authorization fails closed.
+pub fn decode_token(encoded: &str) -> String {
+    let bytes = encoded.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3]) {
+                if let Ok(v) = u8::from_str_radix(hex, 16) {
+                    out.push(v);
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// Read a newline-delimited line with a hard byte ceiling.
 /// `read_line` would otherwise buffer an unbounded attacker-controlled
 /// payload before the size check could run.
@@ -295,11 +335,13 @@ where
     // Only split the first token off as auth when a token is configured.
     // Without a token, a payload may legitimately contain spaces (e.g.
     // pretty-printed JSON), so the whole header is treated as the payload.
+    // The token is percent-encoded on the wire so one that itself contains a
+    // space cannot be mistaken for the header delimiter (audit 2026-11-11 P2).
     let (maybe_token, payload) = match (config.token.is_some(), header.split_once(' ')) {
-        (true, Some((token, rest))) => (Some(token), rest),
+        (true, Some((token_encoded, rest))) => (Some(decode_token(token_encoded)), rest),
         _ => (None, header),
     };
-    if let Err(e) = authorize(config, maybe_token) {
+    if let Err(e) = authorize(config, maybe_token.as_deref()) {
         let _ = writer.write_all(
             format!(
                 "{{\"status\":\"error\",\"message\":{}}}\n",

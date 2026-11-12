@@ -400,6 +400,39 @@ fn wire_payload_with_spaces_is_valid_without_token() {
 }
 
 #[test]
+fn token_encoding_roundtrips_and_keeps_plain_tokens() {
+    // Regression (audit 2026-11-11 P2): a token containing a space could not
+    // authenticate because the control header is space-delimited. The token is
+    // percent-encoded on the wire and decoded back before the constant-time
+    // compare, so any byte value is representable.
+    assert_eq!(
+        faultdeck_agent::encode_token("my secret token"),
+        "my%20secret%20token"
+    );
+    assert_eq!(
+        faultdeck_agent::decode_token("my%20secret%20token"),
+        "my secret token"
+    );
+    // Unreserved bytes pass through unchanged (plain tokens are wire-identical).
+    assert_eq!(
+        faultdeck_agent::encode_token("plain-token_1"),
+        "plain-token_1"
+    );
+    assert_eq!(
+        faultdeck_agent::decode_token("plain-token_1"),
+        "plain-token_1"
+    );
+    // Percent and non-ASCII bytes survive a roundtrip.
+    let tricky = "100% sure / café ☕";
+    assert_eq!(
+        faultdeck_agent::decode_token(&faultdeck_agent::encode_token(tricky)),
+        tricky
+    );
+    // A malformed escape is left verbatim rather than panicking.
+    assert_eq!(faultdeck_agent::decode_token("abc%ZZ"), "abc%ZZ");
+}
+
+#[test]
 fn handle_connection_writes_json_error_response() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();

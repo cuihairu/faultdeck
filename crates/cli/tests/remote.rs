@@ -538,6 +538,116 @@ fn cli_rollback_updates_the_inject_report() {
 }
 
 #[test]
+fn cli_authenticates_token_with_spaces() {
+    // Regression (audit 2026-11-11 P2): the remote header framed the token as
+    // a space-delimited prefix, so a token containing a space was split at the
+    // first space and could never authenticate. The token is percent-encoded
+    // on the wire; a spaced token must now authenticate end to end.
+    use std::net::TcpListener;
+    use std::process::Command;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let cfg = AgentConfig {
+        bind: addr.to_string(),
+        token: Some("my secret token".into()),
+        interface: "eth0".into(),
+        management_networks: vec![],
+    };
+    let adapter = NetemAdapter::dry_run("eth0");
+    let firewall = Iptables {
+        dry_run: true,
+        path: None,
+        runner: None,
+    };
+    std::thread::spawn(move || {
+        if let Ok((stream, _)) = listener.accept() {
+            let applied = std::sync::Mutex::new(std::collections::HashSet::new());
+            let _ = faultdeck_agent::handle_connection(
+                &std::sync::Arc::new(cfg),
+                &adapter,
+                &firewall,
+                &applied,
+                stream,
+            );
+        }
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_faultdeck"))
+        .args([
+            "remote",
+            "ping",
+            "--host",
+            &addr.ip().to_string(),
+            "--port",
+            &addr.port().to_string(),
+            "--token",
+            "my secret token",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "spaced token must authenticate, cli failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("pong"));
+}
+
+#[test]
+fn cli_rejects_wrong_token_with_spaces() {
+    use std::net::TcpListener;
+    use std::process::Command;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let cfg = AgentConfig {
+        bind: addr.to_string(),
+        token: Some("my secret token".into()),
+        interface: "eth0".into(),
+        management_networks: vec![],
+    };
+    let adapter = NetemAdapter::dry_run("eth0");
+    let firewall = Iptables {
+        dry_run: true,
+        path: None,
+        runner: None,
+    };
+    std::thread::spawn(move || {
+        if let Ok((stream, _)) = listener.accept() {
+            let applied = std::sync::Mutex::new(std::collections::HashSet::new());
+            let _ = faultdeck_agent::handle_connection(
+                &std::sync::Arc::new(cfg),
+                &adapter,
+                &firewall,
+                &applied,
+                stream,
+            );
+        }
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_faultdeck"))
+        .args([
+            "remote",
+            "ping",
+            "--host",
+            &addr.ip().to_string(),
+            "--port",
+            &addr.port().to_string(),
+            "--token",
+            "wrong secret",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("unauthorized"),
+        "expected unauthorized, got: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn cli_bails_on_oversized_response() {
     // Regression (audit 2026-11-11 P2): the response read used
     // read_to_string, buffering an unbounded peer-controlled payload before
