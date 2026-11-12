@@ -283,6 +283,43 @@ fn fetch_report_requires_owner() {
 }
 
 #[test]
+fn rejected_agent_registration_gets_error_response() {
+    // Regression (audit 2026-11-11 P2): a rejected agent registration must
+    // receive an error frame, not a bare connection drop, so the agent can
+    // stop retrying instead of reconnecting forever.
+    use faultdeck_agent::transport::{read_frame, send_frame};
+    use std::io::{BufReader, BufWriter};
+
+    let state = Arc::new(Mutex::new(CoordinatorState::default()));
+    let serve_state = state.clone();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        let _ = faultdeck_coordinator::serve_on_with_token(
+            serve_state,
+            listener,
+            Some("secret".into()),
+        );
+    });
+
+    let stream = TcpStream::connect(addr).unwrap();
+    let mut writer = BufWriter::new(stream.try_clone().unwrap());
+    let envelope = faultdeck_agent::link::RegisterEnvelope {
+        token: Some("wrong".into()),
+        id: "a".into(),
+        capabilities: vec!["netem".into()],
+    };
+    send_frame(&mut writer, &envelope).unwrap();
+    drop(writer);
+    let mut reader = BufReader::new(stream);
+    let resp: AgentResponse = read_frame(&mut reader).unwrap();
+    assert!(
+        matches!(&resp, AgentResponse::Error { message } if message.contains("unauthorized")),
+        "expected an error frame explaining the rejection, got {resp:?}"
+    );
+}
+
+#[test]
 fn unknown_heartbeat_errors() {
     let coordinator = Coordinator::new();
     assert!(matches!(

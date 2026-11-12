@@ -544,7 +544,19 @@ fn handle_agent_link(
         token: token.clone(),
         dispatch_timeout: DEFAULT_DISPATCH_TIMEOUT,
     };
-    coordinator.authorize(envelope.token.as_deref())?;
+    // A rejected registration must get an explicit error frame, not a bare
+    // connection drop: otherwise the agent cannot tell a permanent rejection
+    // (bad token) from a transient drop and reconnects forever — a storm
+    // (audit 2026-11-11 P2).
+    if let Err(e) = coordinator.authorize(envelope.token.as_deref()) {
+        let _ = send_frame(
+            &mut *writer.lock().unwrap(),
+            &AgentResponse::Error {
+                message: e.to_string(),
+            },
+        );
+        return Err(e);
+    }
 
     let now = faultdeck_report::now_ms();
     let identity = AgentIdentity {

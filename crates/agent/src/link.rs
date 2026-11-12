@@ -65,8 +65,8 @@ pub enum LinkError {
     Io(#[from] std::io::Error),
     #[error("transport error: {0}")]
     Transport(#[from] crate::transport::TransportError),
-    #[error("registration rejected by coordinator")]
-    RegisterRejected,
+    #[error("registration rejected by coordinator: {reason}")]
+    RegisterRejected { reason: String },
 }
 
 pub type Result<T> = std::result::Result<T, LinkError>;
@@ -102,7 +102,15 @@ where
         .map(|s| s == "registered")
         .unwrap_or(false);
     if !accepted {
-        return Err(LinkError::RegisterRejected);
+        // The coordinator answers a rejected registration with an error frame
+        // (not a bare drop), so the operator learns the reason instead of the
+        // agent silently retrying forever.
+        let reason = ack
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("no reason given")
+            .to_string();
+        return Err(LinkError::RegisterRejected { reason });
     }
 
     // Heartbeat thread: fire-and-forget over the shared writer.
@@ -197,10 +205,20 @@ where
             Ok(stream) => {
                 attempt = 0;
                 eprintln!("faultdeck-agent: linked to coordinator {}", cfg.coordinator);
-                if link_session(cfg, agent_cfg, adapter, firewall, applied, stream).is_err() {
-                    eprintln!("faultdeck-agent: link dropped; reconnecting");
+                match link_session(cfg, agent_cfg, adapter, firewall, applied, stream) {
+                    // A rejected registration is permanent (wrong/missing
+                    // token): retrying it forever is a reconnect storm. Fail
+                    // fast so the operator sees the reason instead.
+                    Err(LinkError::RegisterRejected { reason }) => {
+                        eprintln!("faultdeck-agent: registration rejected: {reason}");
+                        return Err(LinkError::RegisterRejected { reason });
+                    }
+                    Err(_) => {
+                        eprintln!("faultdeck-agent: link dropped; reconnecting");
+                        std::thread::sleep(cfg.reconnect_backoff);
+                    }
+                    Ok(()) => std::thread::sleep(cfg.reconnect_backoff),
                 }
-                std::thread::sleep(cfg.reconnect_backoff);
             }
             Err(e) => {
                 attempt += 1;
