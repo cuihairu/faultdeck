@@ -167,6 +167,18 @@
 - [x] P1.5 agent 默认无 token，非回环绑定不拒绝——能落 DROP 规则的守护进程应 fail-closed
   - 修复：serve_on 在 accept 前校验实际绑定地址，非回环且无 token 返回 InsecureBind（crates/agent/src/lib.rs:162-169 require_secure_bind、lib.rs:366-371 serve_on）；测试 require_secure_bind_fails_closed_without_token、serve_on_refuses_non_loopback_listener_without_token；cargo test --workspace 全绿（89 passed, 0 failed）；证据 commit ba1fa9e
 
+### P2 合并清单
+
+- [x] P2.1 dry_run 捕获空字符串——**非缺陷裁定**：SystemCommandExecutor 的 dry_run 分支不启动子进程，stdout/stderr 恒为空串是有意语义（无进程即无输出），调用方把空输出当"无操作"是 dry-run 的既有行为；不改代码，无 commit。
+- [x] P2.2 Disconnect 生成非法 qdisc 命令——修复：netem validate() 在 core_validate 前拒绝 Disconnect（DisconnectNotNetem），netem_commands 的 Disconnect 分支防御性返回空（crates/netem/src/lib.rs:446-452、575）；测试 rejects_disconnect_as_not_netem；证据 commit 77f42ad。
+- [x] P2.3 iptables 仅入站单向——修复：JUMP_CHAINS=[INPUT,OUTPUT,FORWARD]，ensure_chain/rollback 遍历三链（crates/agent/src/firewall.rs:14、95、207）；测试 ensure_chain_installs_chain_and_jump、ensure_chain_dry_run_emits_jump_install、full_apply_rollback_lifecycle_is_recorded；证据 commit 26139a5。
+- [x] P2.4 Heartbeat 可伪造在线——修复：控制面 Heartbeat 要求存活的 reverse link，否则 NotConnected 拒绝（crates/coordinator/src/lib.rs:320）；测试 register_heartbeat_list、heartbeat_accepted_for_linked_agent；证据 commit 33787d1。
+- [x] P2.5 FetchReport 不校验归属——修复：report_owner 映射 + store_report（crates/coordinator/src/lib.rs:190、210-211、379）；非属主与未知 hash 同答 "report not found"；测试 fetch_report_requires_owner；证据 commit 1e161ee。
+- [x] P2.6 拒绝注册无错误响应→重连风暴——修复：coordinator 鉴权失败写 AgentResponse::Error 帧，agent 对 RegisterRejected 直接退出（crates/agent/src/link.rs:68-69、113、212-213）；测试 rejected_agent_registration_gets_error_response、run_link_exits_on_rejection_instead_of_storm；证据 commit 1dc2ca0。
+- [x] P2.7 CLI read_to_string 无界 OOM——修复：响应读取改用 read_line_limited(MAX_INJECTION_BYTES)（crates/cli/src/main.rs:266）；测试 cli_bails_on_oversized_response；证据 commit 9280ebe。
+- [x] P2.8 scenario_name 静默丢弃——修复：AgentCommand::Inject 增 #[serde(default)] scenario_name，handler 优先用操作员名、缺省回退 {id}-injection（crates/coordinator/src/lib.rs:72-78、334-347）；CLI hub inject 透传（crates/cli/src/main.rs:425）；desktop 镜像同步；测试 inject_honors_operator_scenario_name_in_report；cargo test --workspace 全绿（96 passed, 0 failed）；证据 commit a564f79。
+- [x] P2.9 每链路一线程忙轮询 50ms——修复：调度器改在队列 Condvar 上阻塞，enqueue 时 notify_one、链路替换/移除时 notify_all 唤醒退出；queue_cond 以 Arc<Condvar> 持有以绕开 wait 借用冲突（crates/coordinator/src/lib.rs:190-194、256、603、723、763-765）；测试 idle_link_dispatcher_wakes_on_enqueue；cargo test --workspace 全绿（97 passed, 0 failed）；证据 commit d97077c。
+
 ## 源码分层分析 2026-11-07
 
 ### 抽象层清单
