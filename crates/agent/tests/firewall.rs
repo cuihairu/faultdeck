@@ -46,23 +46,40 @@ fn failing(prefix: &str) -> Iptables {
 
 #[test]
 fn ensure_chain_installs_chain_and_jump() {
+    // Regression (audit 2026-11-11 P2): a disconnect used to be hooked from
+    // INPUT only, so outbound traffic to the target was never dropped. The
+    // chain must be jumped from every direction.
     let (fw, calls) = recorder();
     fw.ensure_chain().unwrap();
     let calls = calls.lock().unwrap().clone();
     assert!(calls.iter().any(|c| c.starts_with("-N FAULTDECK")));
-    assert!(calls.iter().any(|c| c.starts_with("-I INPUT -j FAULTDECK")));
+    for chain in ["INPUT", "OUTPUT", "FORWARD"] {
+        assert!(
+            calls
+                .iter()
+                .any(|c| c.starts_with(&format!("-I {chain} -j FAULTDECK"))),
+            "missing jump for {chain}: {calls:?}"
+        );
+    }
 }
 
 #[test]
 fn ensure_chain_dry_run_emits_jump_install() {
-    // Dry-run cannot execute -C, so it must treat the jump as absent and
+    // Dry-run cannot execute -C, so it must treat the jumps as absent and
     // still emit the same -I command as a real first deployment.
     let (mut fw, calls) = recorder();
     fw.dry_run = true;
     fw.ensure_chain().unwrap();
     let calls = calls.lock().unwrap().clone();
     assert!(calls.iter().any(|c| c.starts_with("-N FAULTDECK")));
-    assert!(calls.iter().any(|c| c.starts_with("-I INPUT -j FAULTDECK")));
+    for chain in ["INPUT", "OUTPUT", "FORWARD"] {
+        assert!(
+            calls
+                .iter()
+                .any(|c| c.starts_with(&format!("-I {chain} -j FAULTDECK"))),
+            "missing jump for {chain}: {calls:?}"
+        );
+    }
 }
 
 #[test]
@@ -224,10 +241,21 @@ fn full_apply_rollback_lifecycle_is_recorded() {
     let calls = calls.lock().unwrap().clone();
     assert!(calls.iter().any(|c| c.starts_with("-N FAULTDECK")));
     assert!(calls.iter().any(|c| c.starts_with("-I INPUT -j FAULTDECK")));
+    assert!(calls
+        .iter()
+        .any(|c| c.starts_with("-I OUTPUT -j FAULTDECK")));
     assert!(calls.iter().any(|c| c.contains("-A FAULTDECK")
         && c.contains("-d 192.0.2.0/24")
         && c.contains("-j DROP")));
-    assert!(calls.iter().any(|c| c.starts_with("-D INPUT -j FAULTDECK")));
+    // Every direction's jump must be removed before the chain is flushed.
+    for chain in ["INPUT", "OUTPUT", "FORWARD"] {
+        assert!(
+            calls
+                .iter()
+                .any(|c| c.starts_with(&format!("-D {chain} -j FAULTDECK"))),
+            "missing jump removal for {chain}: {calls:?}"
+        );
+    }
     assert!(calls.iter().any(|c| c.starts_with("-F FAULTDECK")));
     assert!(calls.iter().any(|c| c.starts_with("-X FAULTDECK")));
 }

@@ -14,7 +14,7 @@
 | netem 适配器 | `NetemAdapter` | Plans, applies, and rolls back qdisc/filter state for latency and loss on one interface. | `crates/netem/src/lib.rs:172` |
 | pilot qdisc | pilot qdisc | FaultDeck-owned root qdisc handle `100:` used to recognize and safely remove only its own traffic-control state. | `crates/netem/src/lib.rs:13` |
 | 断连路由 | disconnect routing | The agent routes a disconnect injection to iptables instead of `tc`; other faults go to netem. | `crates/agent/src/lib.rs:196` |
-| iptables 链 | iptables chain | The `FAULTDECK` mangle chain and its `INPUT` jump carry disconnect DROP rules. | `crates/agent/src/firewall.rs:9` |
+| iptables 链 | iptables chain | The `FAULTDECK` mangle chain and its `INPUT`/`OUTPUT`/`FORWARD` jumps carry disconnect DROP rules in both directions. | `crates/agent/src/firewall.rs:9` |
 | 断连适配器 | disconnect adapter | `Iptables` ensures the chain, installs DROP rules, and performs idempotent rollback. | `crates/agent/src/firewall.rs:31` |
 | Agent 配置 | `AgentConfig` | Process-start settings: bind address, optional token, target interface, and management networks. | `crates/agent/src/lib.rs:90` |
 | 单活动故障 | single active fault | Agent-host state that rejects a second injection until rollback clears the adapter marker. | `crates/agent/src/lib.rs:191` |

@@ -14,7 +14,7 @@
 | netem 适配器 | `NetemAdapter` | 在单网卡上规划、应用并回滚延迟与丢包的 qdisc/filter 状态。 | `crates/netem/src/lib.rs:172` |
 | pilot qdisc | pilot qdisc | FaultDeck 拥有的根 qdisc 句柄 `100:`,用于识别并只安全删除自己的流量控制状态。 | `crates/netem/src/lib.rs:13` |
 | 断连路由 | disconnect routing | Agent 把 disconnect 注入路由到 iptables,其余故障路由到 netem。 | `crates/agent/src/lib.rs:196` |
-| iptables 链 | iptables chain | `FAULTDECK` mangle 链及其 `INPUT` 跳转承载断连 DROP 规则。 | `crates/agent/src/firewall.rs:9` |
+| iptables 链 | iptables chain | `FAULTDECK` mangle 链及其 `INPUT`/`OUTPUT`/`FORWARD` 跳转承载断连 DROP 规则(双向)。 | `crates/agent/src/firewall.rs:9` |
 | 断连适配器 | disconnect adapter | `Iptables` 确保链存在、安装 DROP 规则,并执行幂等回滚。 | `crates/agent/src/firewall.rs:31` |
 | Agent 配置 | `AgentConfig` | 进程启动配置:监听地址、可选 token、目标网卡和管理网段。 | `crates/agent/src/lib.rs:90` |
 | 单活动故障 | single active fault | Agent 宿主状态;回滚清除适配器标记前拒绝第二次注入。 | `crates/agent/src/lib.rs:191` |

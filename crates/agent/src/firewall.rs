@@ -7,7 +7,11 @@ use ipnet::IpNet;
 use thiserror::Error;
 
 pub const CHAIN: &str = "FAULTDECK";
-pub const JUMP_CHAIN: &str = "INPUT";
+/// Base chains the FAULTDECK chain is jumped from. A disconnect must cut
+/// traffic in every direction, not just inbound: INPUT drops traffic arriving
+/// from the target (`-s`), OUTPUT drops traffic leaving to it (`-d`), and
+/// FORWARD covers a host that routes between the source and destination.
+pub const JUMP_CHAINS: &[&str] = &["INPUT", "OUTPUT", "FORWARD"];
 
 #[derive(Debug, Error)]
 pub enum FirewallError {
@@ -82,34 +86,37 @@ impl Iptables {
         // -N fails with "Chain already exists" when the chain is present
         // after a previous run; tolerate it for idempotence.
         self.run_ignoring(&["-N", CHAIN, "-t", "mangle"], &["Chain already exists"])?;
-        // Install the INPUT -> FAULTDECK jump only if it is not already there.
-        // iptables -I inserts unconditionally and never reports "Bad rule",
-        // so relying on that message to tolerate a pre-existing jump was dead
-        // code: a leftover jump (after agent restart, applied is in-memory)
-        // would accumulate another copy on every apply. -C checks first; only
-        // a missing jump triggers the insert.
-        let jump = ["-C", "INPUT", "-j", CHAIN, "-t", "mangle"];
-        // In dry-run we cannot query iptables, so treat the jump as absent:
-        // this keeps the emitted -I command in step with a real first deploy.
-        let already_present = if self.dry_run {
-            false
-        } else {
-            match self.run(&jump) {
-                Ok(()) => true,
-                Err(FirewallError::Command(message)) => {
-                    // "Bad rule" means no matching rule exists -> not installed.
-                    // Any other failure (e.g. iptables missing) propagates below.
-                    if message.contains("Bad rule") {
-                        false
-                    } else {
-                        return Err(FirewallError::Command(message));
+        // Install the <chain> -> FAULTDECK jump for every direction only if it
+        // is not already there. iptables -I inserts unconditionally and never
+        // reports "Bad rule", so relying on that message to tolerate a
+        // pre-existing jump was dead code: a leftover jump (after agent
+        // restart, applied is in-memory) would accumulate another copy on
+        // every apply. -C checks first; only a missing jump triggers insert.
+        for chain in JUMP_CHAINS {
+            let jump = ["-C", chain, "-j", CHAIN, "-t", "mangle"];
+            // In dry-run we cannot query iptables, so treat the jump as
+            // absent: this keeps the emitted -I command in step with a real
+            // first deploy.
+            let already_present = if self.dry_run {
+                false
+            } else {
+                match self.run(&jump) {
+                    Ok(()) => true,
+                    Err(FirewallError::Command(message)) => {
+                        // "Bad rule" means no matching rule exists -> not
+                        // installed. Any other failure propagates below.
+                        if message.contains("Bad rule") {
+                            false
+                        } else {
+                            return Err(FirewallError::Command(message));
+                        }
                     }
+                    Err(e) => return Err(e),
                 }
-                Err(e) => return Err(e),
+            };
+            if !already_present {
+                self.run_ignoring(&["-I", chain, "-j", CHAIN, "-t", "mangle"], &["Bad rule"])?;
             }
-        };
-        if !already_present {
-            self.run_ignoring(&["-I", "INPUT", "-j", CHAIN, "-t", "mangle"], &["Bad rule"])?;
         }
         Ok(())
     }
@@ -194,10 +201,12 @@ impl Iptables {
     }
 
     pub fn rollback(&self) -> Result<()> {
-        // Remove the INPUT -> FAULTDECK jump first; otherwise -X fails with
-        // "Too many links" because the chain is still referenced. Tolerate a
-        // missing jump ("Bad rule") for idempotence.
-        self.run_ignoring(&["-D", "INPUT", "-j", CHAIN, "-t", "mangle"], &["Bad rule"])?;
+        // Remove every <chain> -> FAULTDECK jump first; otherwise -X fails
+        // with "Too many links" because the chain is still referenced.
+        // Tolerate a missing jump ("Bad rule") for idempotence.
+        for chain in JUMP_CHAINS {
+            self.run_ignoring(&["-D", chain, "-j", CHAIN, "-t", "mangle"], &["Bad rule"])?;
+        }
         // Flush then delete the chain, tolerating an absent chain.
         self.run_ignoring(&["-F", CHAIN, "-t", "mangle"], &["No chain", "No rule"])?;
         self.run_ignoring(
