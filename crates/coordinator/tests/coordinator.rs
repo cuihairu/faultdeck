@@ -213,6 +213,76 @@ fn inject_stores_report_and_fetches() {
 }
 
 #[test]
+fn fetch_report_requires_owner() {
+    // Regression (audit 2026-11-11 P2): FetchReport used to ignore `id` and
+    // return any report by hash alone, so a controller could read — or
+    // enumerate by probing — another agent's report. Only the owning agent
+    // may fetch it; a mismatched id and an unknown hash both answer
+    // "report not found" so existence is not leaked.
+    let coordinator = Coordinator::new();
+    coordinator
+        .handle_control_command(&register("agent-1"), None)
+        .unwrap();
+    coordinator
+        .handle_control_command(
+            &AgentCommand::Inject {
+                id: "agent-1".into(),
+                injection: injection(),
+            },
+            None,
+        )
+        .unwrap();
+    let hash = coordinator
+        .state
+        .lock()
+        .unwrap()
+        .reports
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+
+    let owner = coordinator
+        .handle_control_command(
+            &AgentCommand::FetchReport {
+                id: "agent-1".into(),
+                scenario_hash: hash.clone(),
+            },
+            None,
+        )
+        .unwrap();
+    assert!(matches!(owner, AgentResponse::Report { .. }));
+
+    let intruder = coordinator
+        .handle_control_command(
+            &AgentCommand::FetchReport {
+                id: "intruder".into(),
+                scenario_hash: hash.clone(),
+            },
+            None,
+        )
+        .unwrap();
+    assert!(
+        matches!(intruder, AgentResponse::Error { ref message } if message == "report not found"),
+        "expected not found for a non-owner, got {intruder:?}"
+    );
+
+    let missing = coordinator
+        .handle_control_command(
+            &AgentCommand::FetchReport {
+                id: "agent-1".into(),
+                scenario_hash: "0000000000000000".into(),
+            },
+            None,
+        )
+        .unwrap();
+    assert!(
+        matches!(missing, AgentResponse::Error { ref message } if message == "report not found"),
+        "expected not found for an unknown hash, got {missing:?}"
+    );
+}
+
+#[test]
 fn unknown_heartbeat_errors() {
     let coordinator = Coordinator::new();
     assert!(matches!(

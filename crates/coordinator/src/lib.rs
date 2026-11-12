@@ -171,6 +171,9 @@ pub struct CoordinatorState {
     /// Agent id -> scenario hash of the fault currently applied (set when an
     /// inject is acknowledged, cleared when its rollback is).
     pub applied: BTreeMap<String, String>,
+    /// Scenario hash -> agent id whose injection produced it. Gates
+    /// `FetchReport` to the owning agent (audit 2026-11-11 P2).
+    pub report_owner: BTreeMap<String, String>,
 }
 
 impl CoordinatorState {
@@ -188,7 +191,10 @@ impl CoordinatorState {
         })
     }
 
-    pub fn store_report(&mut self, hash: String, report: RunReport) {
+    /// Store a run report and remember which agent's injection produced it, so
+    /// `FetchReport` can gate reads to the owning agent.
+    pub fn store_report(&mut self, hash: String, report: RunReport, agent_id: &str) {
+        self.report_owner.insert(hash.clone(), agent_id.to_string());
         self.reports.insert(hash, report);
     }
 
@@ -326,7 +332,7 @@ impl Coordinator {
                 self.state
                     .lock()
                     .unwrap()
-                    .store_report(hash.clone(), report);
+                    .store_report(hash.clone(), report, id);
                 self.submit_control(
                     id,
                     AgentRequest::Inject(injection.clone()),
@@ -341,11 +347,21 @@ impl Coordinator {
                 let applied_hash = self.state.lock().unwrap().applied.get(id).cloned();
                 self.submit_control(id, AgentRequest::Rollback, applied_hash, true)
             }
-            AgentCommand::FetchReport { scenario_hash, .. } => {
-                match self.state.lock().unwrap().reports.get(scenario_hash) {
-                    Some(report) => Ok(AgentResponse::Report {
-                        report: report.clone(),
-                    }),
+            AgentCommand::FetchReport { id, scenario_hash } => {
+                let state = self.state.lock().unwrap();
+                // Ownership: only the agent whose injection produced the
+                // report may fetch it. A non-existent hash and a report owned
+                // by a different agent both answer "not found" so reports
+                // cannot be enumerated by probing hashes across agent ids
+                // (audit 2026-11-11 P2).
+                let owned = state.report_owner.get(scenario_hash) == Some(id);
+                let report = if owned {
+                    state.reports.get(scenario_hash).cloned()
+                } else {
+                    None
+                };
+                match report {
+                    Some(report) => Ok(AgentResponse::Report { report }),
                     None => Ok(AgentResponse::Error {
                         message: "report not found".into(),
                     }),
