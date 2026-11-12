@@ -713,6 +713,47 @@ fn dispatch_inject_and_rollback_through_agent_link() {
 }
 
 #[test]
+fn idle_link_dispatcher_wakes_on_enqueue() {
+    // Regression (audit 2026-11-11 P2): the per-link dispatcher used to busy-
+    // poll the queue every 50ms. A link at rest must block on the queue condvar
+    // and wake only when a command is enqueued (or the link is replaced).
+    // This test proves the wakeup contract: after the dispatcher has been
+    // idle, enqueueing a command drains it promptly. If the wakeup were
+    // broken, the inject would block until the dispatch timeout and fail.
+    let state = Arc::new(Mutex::new(CoordinatorState::default()));
+    let serve_state = state.clone();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        let _ = serve_on_with_options(serve_state, listener, None, Duration::from_secs(2));
+    });
+
+    let recorded = Arc::new(Mutex::new(Vec::<String>::new()));
+    spawn_agent_link(addr, recorded.clone());
+    wait_for_available(&addr, "game-01");
+    // Let the dispatcher reach the blocked (idle) state past its initial
+    // drain check before enqueueing.
+    std::thread::sleep(Duration::from_millis(250));
+
+    let resp = send_wire(
+        &addr,
+        AgentCommand::Inject {
+            id: "game-01".into(),
+            injection: injection(),
+            scenario_name: None,
+        },
+    );
+    assert!(
+        matches!(&resp, AgentResponse::Ok { message } if message.contains("fault applied")),
+        "idle dispatcher must wake and dispatch on enqueue, got {resp:?}"
+    );
+    assert!(
+        !recorded.lock().unwrap().is_empty(),
+        "woken dispatcher must have delivered the command to the agent"
+    );
+}
+
+#[test]
 fn queued_command_is_delivered_when_agent_reconnects() {
     // An inject submitted while the agent is offline must be SAVED, then
     // delivered automatically once the agent dials in (drain-on-reconnect).

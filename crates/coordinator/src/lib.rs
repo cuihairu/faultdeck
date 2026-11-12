@@ -3,7 +3,7 @@ use std::io::BufReader;
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, SyncSender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use faultdeck_agent::link::{LinkMessage, RegisterEnvelope};
@@ -188,6 +188,12 @@ pub struct CoordinatorState {
     /// Scenario hash -> agent id whose injection produced it. Gates
     /// `FetchReport` to the owning agent (audit 2026-11-11 P2).
     pub report_owner: BTreeMap<String, String>,
+    /// Wakes a link's dispatcher when a command is enqueued or a link is
+    /// replaced/removed, so dispatchers block instead of busy-polling every
+    /// 50ms (audit 2026-11-11 P2: one thread per link busy-polling). Held as
+    /// `Arc` so the dispatcher can clone it and `wait()` without the guard
+    /// borrowing the condvar it is handing to `wait`.
+    pub queue_cond: Arc<Condvar>,
 }
 
 impl CoordinatorState {
@@ -247,6 +253,9 @@ impl CoordinatorState {
         let queue = self.queues.entry(agent_id.to_string()).or_default();
         let pending = queue.len() as u64 + 1;
         queue.push_back(command);
+        // Wake the agent's dispatcher so it drains immediately rather than
+        // polling. No-op when the agent is offline (no dispatcher running).
+        self.queue_cond.notify_one();
         pending
     }
 }
@@ -591,6 +600,9 @@ fn handle_agent_link(
     {
         let mut state = state.lock().unwrap();
         state.register(identity.clone());
+        // Replacing a prior link (reconnect) leaves the old dispatcher blocked
+        // on the queue condvar; wake it so it observes `!current` and exits.
+        state.queue_cond.notify_all();
         state.links.insert(envelope.id.clone(), link.clone());
         // Ensure a queue exists so the dispatcher has a target; pre-existing
         // queued commands (enqueued while the agent was offline) are drained.
@@ -708,6 +720,9 @@ fn remove_link_if_current(
         .unwrap_or(false);
     if is_current {
         st.links.remove(agent_id);
+        // Wake this link's dispatcher so it observes the removal and exits
+        // instead of blocking on the condvar forever.
+        st.queue_cond.notify_all();
     }
     let pending = std::mem::take(&mut *link.pending.lock().unwrap());
     for (_, pd) in pending {
@@ -743,8 +758,12 @@ fn spawn_dispatcher(state: Arc<Mutex<CoordinatorState>>, agent_id: String, link:
             if let Some(command) = st.queues.get_mut(&agent_id).and_then(|q| q.pop_front()) {
                 break command;
             }
-            drop(st);
-            std::thread::sleep(Duration::from_millis(50));
+            // Block until a command is enqueued (notify_one in enqueue) or the
+            // link is replaced/removed (notify_all in the link handlers), so a
+            // link at rest costs no CPU instead of waking every 50ms (audit
+            // 2026-11-11 P2: one thread per link busy-polling).
+            let cv = st.queue_cond.clone();
+            st = cv.wait(st).unwrap();
         };
         // For a rollback, resolve the applied scenario hash at dispatch time
         // (the inject may have completed only after the command was enqueued).
