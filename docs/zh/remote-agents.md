@@ -26,7 +26,7 @@ sudo faultdeck-agent \
 
 link 模式下 agent **不再监听**控制连接 —— 而是主动出站拨号 coordinator(可穿双向 NAT),以 `--agent-id` 注册,发送心跳,执行下发的 `inject`/`rollback` 指令,并通过同一条连接回传结果;断线自动带退避重连。
 
-启动警告:未配置任何 `--management` 网段时,agent 会打印 `warning: no management networks configured; agent may fault management traffic`;绑定非回环地址且未配置 `--token` 时也会告警:`warning: binding <addr> without a token; any reachable host can control the agent`。重要主机务必配置管理网段与 token。
+启动警告:未配置任何 `--management` 网段时,agent 会打印 `warning: no management networks configured; agent may fault management traffic`;绑定非回环地址且未配置 `--token` 会拒绝启动(fail-closed),报错 `refusing to bind <addr> without a token; a daemon that can install DROP rules must fail closed — pass --token or bind a loopback address`。重要主机务必配置管理网段与 token。
 
 默认网卡也可通过库 API `faultdeck_netem::default_device()` 发现(取 `/proc/net/route` 中 metric 最低的 UP 默认路由)。
 

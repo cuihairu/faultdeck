@@ -343,6 +343,51 @@ fn warn_insecure_bind_flags_remote_without_token() {
 }
 
 #[test]
+fn require_secure_bind_fails_closed_without_token() {
+    // Regression (audit 2026-11-11 P1.5): a non-loopback bind without a
+    // token used to only warn, yet the agent can install DROP rules — it
+    // must refuse to start instead (fail-closed).
+    use faultdeck_agent::require_secure_bind;
+    assert!(require_secure_bind("0.0.0.0:7000", None).is_err());
+    assert!(require_secure_bind("[::]:7000", None).is_err());
+    assert!(require_secure_bind("192.168.1.10:7000", None).is_err());
+    assert!(require_secure_bind("0.0.0.0:7000", Some("secret")).is_ok());
+    assert!(require_secure_bind("127.0.0.1:7000", None).is_ok());
+    assert!(require_secure_bind("[::1]:7000", None).is_ok());
+    let err = require_secure_bind("0.0.0.0:7000", None).unwrap_err();
+    assert!(
+        err.to_string().contains("refusing to bind"),
+        "unexpected message: {err}"
+    );
+}
+
+#[test]
+fn serve_on_refuses_non_loopback_listener_without_token() {
+    // The guard runs on the actually-bound address, so handing serve_on a
+    // listener on 0.0.0.0 without a token must return before the accept
+    // loop starts — not after a first insecure client connected.
+    let listener = TcpListener::bind("0.0.0.0:0").unwrap();
+    let adapter = NetemAdapter::dry_run("eth0");
+    let firewall = Iptables {
+        dry_run: true,
+        path: None,
+        runner: None,
+    };
+    let err = serve_on(
+        config(),
+        adapter,
+        firewall,
+        listener,
+        std::collections::HashSet::new(),
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("refusing to bind"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn wire_payload_with_spaces_is_valid_without_token() {
     // Without a configured token, the header must be treated entirely as
     // payload, so pretty-printed JSON with spaces after colons is not split.

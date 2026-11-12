@@ -25,6 +25,11 @@ pub enum AgentError {
     InvalidCommand { reason: String },
     #[error("unauthorized: missing or invalid token")]
     Unauthorized,
+    #[error(
+        "refusing to bind {bind} without a token; a daemon that can install \
+         DROP rules must fail closed — pass --token or bind a loopback address"
+    )]
+    InsecureBind { bind: String },
     #[error("adapter error: {0}")]
     Adapter(#[from] faultdeck_netem::AdapterError),
 }
@@ -147,6 +152,21 @@ pub fn warn_insecure_bind(bind: &str, token: Option<&str>) -> bool {
         );
     }
     insecure
+}
+
+/// Fail-closed guard for the listening (Mode A) path: a daemon that can
+/// install DROP rules must not serve a non-loopback address without a shared
+/// token, because anyone reachable on the network could fault or roll back
+/// real traffic. `serve_on` checks the actually-bound listener address with
+/// this (so `serve` and any direct caller are covered); link mode (reverse
+/// dial) never reaches it because it does not listen.
+pub fn require_secure_bind(bind: &str, token: Option<&str>) -> Result<()> {
+    if !is_loopback_bind(bind) && token.is_none() {
+        return Err(AgentError::InsecureBind {
+            bind: bind.to_string(),
+        });
+    }
+    Ok(())
 }
 
 pub fn authorize(config: &AgentConfig, token: Option<&str>) -> Result<()> {
@@ -344,8 +364,14 @@ pub fn serve_on(
     listener: TcpListener,
     applied: HashSet<String>,
 ) -> Result<()> {
+    // Fail closed before accepting anything (audit 2026-11-11 P1.5): an
+    // agent that can install DROP rules must not listen on a non-loopback
+    // address without a shared token. The bound address is checked, not
+    // config.bind, so a mismatched listener cannot slip past.
+    let bound = listener.local_addr()?;
+    require_secure_bind(&bound.to_string(), config.token.as_deref())?;
     let config = Arc::new(config);
-    eprintln!("agent listening on {}", listener.local_addr()?);
+    eprintln!("agent listening on {bound}");
     let applied = Arc::new(Mutex::new(applied));
     for stream in listener.incoming() {
         match stream {

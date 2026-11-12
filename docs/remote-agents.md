@@ -26,7 +26,7 @@ sudo faultdeck-agent \
 
 In link mode the agent does **not** listen for control connections — it dials the coordinator outbound (works behind double-NAT), registers with `--agent-id`, sends heartbeats, executes dispatched `inject`/`rollback` commands, and replies with results over the same connection, reconnecting with backoff if the link drops.
 
-Startup warning: if no `--management` networks are configured, the agent prints `warning: no management networks configured; agent may fault management traffic`. Binding a non-loopback address without `--token` also warns: `warning: binding <addr> without a token; any reachable host can control the agent`. Always configure management networks and a token on hosts you care about.
+Startup warning: if no `--management` networks are configured, the agent prints `warning: no management networks configured; agent may fault management traffic`. Binding a non-loopback address without `--token` is refused (fail-closed): startup exits with `refusing to bind <addr> without a token; a daemon that can install DROP rules must fail closed — pass --token or bind a loopback address`. Always configure management networks and a token on hosts you care about.
 
 The default interface can also be discovered programmatically via `faultdeck_netem::default_device()` (lowest-metric UP default route from `/proc/net/route`).
 
