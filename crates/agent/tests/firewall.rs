@@ -335,3 +335,42 @@ fn apply_rejects_mixed_family_before_installing_any_rule() {
     // no jump install, and no DROP rule may be attempted at all.
     assert!(calls.is_empty());
 }
+
+#[test]
+fn apply_emits_both_rules_when_source_equals_destination() {
+    // Regression (audit 2026-11-11 P1.4): with source == destination the old
+    // `source == network` guess matched on every networks() pass and emitted
+    // the -s rule twice, so traffic *to* that CIDR was never dropped. Both
+    // role rules must exist, each exactly once.
+    use faultdeck_core::{DisconnectSpec, FaultSpec, Injection, Target};
+    use ipnet::IpNet;
+    use std::str::FromStr;
+
+    let (fw, calls) = recorder();
+    let cidr = IpNet::from_str("198.51.100.0/24").unwrap();
+    let injection = Injection {
+        fault: FaultSpec::Disconnect(DisconnectSpec { all_traffic: true }),
+        target: Target {
+            source: Some(cidr),
+            destination: Some(cidr),
+            destination_port: None,
+        },
+    };
+    fw.apply(&injection).unwrap();
+
+    let calls = calls.lock().unwrap().clone();
+    let source_rules = calls
+        .iter()
+        .filter(|c| {
+            c.contains("-A FAULTDECK") && c.contains("-s 198.51.100.0/24") && c.contains("-j DROP")
+        })
+        .count();
+    let dest_rules = calls
+        .iter()
+        .filter(|c| {
+            c.contains("-A FAULTDECK") && c.contains("-d 198.51.100.0/24") && c.contains("-j DROP")
+        })
+        .count();
+    assert_eq!(source_rules, 1, "exactly one source rule, got {calls:?}");
+    assert_eq!(dest_rules, 1, "exactly one destination rule, got {calls:?}");
+}

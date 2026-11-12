@@ -132,7 +132,19 @@ impl Iptables {
             FaultSpec::Disconnect(spec) => spec.all_traffic,
             _ => true,
         };
-        for network in target.networks() {
+        // One rule per target role: the source CIDR matches with -s, the
+        // destination CIDR with -d. When both roles name the same CIDR each
+        // rule must still exist; deciding per `networks()` iteration (the old
+        // `source == network` guess) emitted the source rule twice and never
+        // the destination rule, silently dropping the wrong direction.
+        let mut matches: Vec<(&str, &IpNet)> = Vec::new();
+        if let Some(source) = &target.source {
+            matches.push(("-s", source));
+        }
+        if let Some(destination) = &target.destination {
+            matches.push(("-d", destination));
+        }
+        for (flag, network) in matches {
             let IpNet::V4(net) = network else {
                 unreachable!()
             };
@@ -140,12 +152,7 @@ impl Iptables {
             let prefix = net.prefix_len();
             let mut args: Vec<String> =
                 vec!["-A".into(), CHAIN.into(), "-t".into(), "mangle".into()];
-            // source is a source match (-s), destination a dest match (-d).
-            if target.source == Some(*network) {
-                args.push("-s".into());
-            } else {
-                args.push("-d".into());
-            }
+            args.push((*flag).into());
             args.push(format!("{addr}/{prefix}"));
             // Port-level disconnect drops both TCP and UDP on the port; a
             // single protocol match would leave the other transport untouched.
