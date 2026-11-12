@@ -32,6 +32,8 @@ mod wire {
         Inject {
             id: String,
             injection: faultdeck_core::Injection,
+            #[serde(default)]
+            scenario_name: Option<String>,
         },
         Rollback {
             id: String,
@@ -181,6 +183,7 @@ fn coordinator_inject(
         AgentCommand::Inject {
             id: agent_id,
             injection,
+            scenario_name: None,
         },
     )
 }
@@ -257,6 +260,7 @@ mod tests {
             command: AgentCommand::Inject {
                 id: "a1".into(),
                 injection,
+                scenario_name: None,
             },
         };
         let json = serde_json::to_string(&msg).unwrap();

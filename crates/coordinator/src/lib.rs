@@ -66,10 +66,24 @@ pub struct RegisterRequest {
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum AgentCommand {
     Register(RegisterRequest),
-    Heartbeat { id: String },
-    Inject { id: String, injection: Injection },
-    Rollback { id: String },
-    FetchReport { id: String, scenario_hash: String },
+    Heartbeat {
+        id: String,
+    },
+    Inject {
+        id: String,
+        injection: Injection,
+        /// Operator-supplied scenario name; the coordinator falls back to
+        /// `{id}-injection` when omitted (audit 2026-11-11 P2).
+        #[serde(default)]
+        scenario_name: Option<String>,
+    },
+    Rollback {
+        id: String,
+    },
+    FetchReport {
+        id: String,
+        scenario_hash: String,
+    },
     ListAgents,
 }
 
@@ -317,14 +331,22 @@ impl Coordinator {
                     available: state.available(faultdeck_report::now_ms(), HEARTBEAT_TIMEOUT_MS),
                 })
             }
-            AgentCommand::Inject { id, injection } => {
+            AgentCommand::Inject {
+                id,
+                injection,
+                scenario_name,
+            } => {
                 if !self.state.lock().unwrap().agents.contains_key(id) {
                     return Err(CoordinatorError::NotRegistered(id.clone()));
                 }
                 validate_injection(injection)
                     .map_err(|e| CoordinatorError::InvalidInjection(e.to_string()))?;
                 let scenario = Scenario {
-                    name: format!("{id}-injection"),
+                    // Honor the operator's name; the CLI `hub inject
+                    // --scenario-name` used to be dropped on the floor.
+                    name: scenario_name
+                        .clone()
+                        .unwrap_or_else(|| format!("{id}-injection")),
                     injection: injection.clone(),
                 };
                 let hash = scenario.hash();

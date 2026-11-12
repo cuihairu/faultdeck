@@ -425,10 +425,10 @@ fn main() -> anyhow::Result<()> {
                     AgentCommand::Inject {
                         id: agent,
                         injection,
+                        scenario_name,
                     },
                 )?;
                 print_hub_response(resp)?;
-                let _ = scenario_name; // hub path archives reports coordinator-side
             }
             HubSub::Rollback {
                 host,

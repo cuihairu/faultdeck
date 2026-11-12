@@ -148,6 +148,7 @@ fn inject_queued_when_offline_persists_instruction() {
             &AgentCommand::Inject {
                 id: "agent-1".into(),
                 injection: injection(),
+                scenario_name: None,
             },
             None,
         )
@@ -190,6 +191,7 @@ fn inject_stores_report_and_fetches() {
             &AgentCommand::Inject {
                 id: "agent-1".into(),
                 injection: injection(),
+                scenario_name: None,
             },
             None,
         )
@@ -228,6 +230,7 @@ fn fetch_report_requires_owner() {
             &AgentCommand::Inject {
                 id: "agent-1".into(),
                 injection: injection(),
+                scenario_name: None,
             },
             None,
         )
@@ -280,6 +283,94 @@ fn fetch_report_requires_owner() {
         matches!(missing, AgentResponse::Error { ref message } if message == "report not found"),
         "expected not found for an unknown hash, got {missing:?}"
     );
+}
+
+#[test]
+fn inject_honors_operator_scenario_name_in_report() {
+    // Regression (audit 2026-11-11 P2): `hub inject --scenario-name` was
+    // silently dropped — the archived report always said "{id}-injection" no
+    // matter what the operator named the scenario. The name must reach the
+    // archived report, and the absent-name fallback must still apply.
+    let coordinator = Coordinator::new();
+    coordinator
+        .handle_control_command(&register("agent-1"), None)
+        .unwrap();
+    coordinator
+        .handle_control_command(
+            &AgentCommand::Inject {
+                id: "agent-1".into(),
+                injection: injection(),
+                scenario_name: Some("chaos-drill".into()),
+            },
+            None,
+        )
+        .unwrap();
+    let hash = coordinator
+        .state
+        .lock()
+        .unwrap()
+        .reports
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+
+    let fetched = coordinator
+        .handle_control_command(
+            &AgentCommand::FetchReport {
+                id: "agent-1".into(),
+                scenario_hash: hash,
+            },
+            None,
+        )
+        .unwrap();
+    match fetched {
+        AgentResponse::Report { report } => {
+            assert_eq!(report.scenario_name, "chaos-drill");
+            assert_ne!(report.scenario_name, "agent-1-injection");
+        }
+        other => panic!("expected a report, got {other:?}"),
+    }
+
+    // Omitting the name falls back to "{id}-injection", as before.
+    let coordinator = Coordinator::new();
+    coordinator
+        .handle_control_command(&register("agent-2"), None)
+        .unwrap();
+    coordinator
+        .handle_control_command(
+            &AgentCommand::Inject {
+                id: "agent-2".into(),
+                injection: injection(),
+                scenario_name: None,
+            },
+            None,
+        )
+        .unwrap();
+    let hash = coordinator
+        .state
+        .lock()
+        .unwrap()
+        .reports
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    let fetched = coordinator
+        .handle_control_command(
+            &AgentCommand::FetchReport {
+                id: "agent-2".into(),
+                scenario_hash: hash,
+            },
+            None,
+        )
+        .unwrap();
+    match fetched {
+        AgentResponse::Report { report } => {
+            assert_eq!(report.scenario_name, "agent-2-injection");
+        }
+        other => panic!("expected a report, got {other:?}"),
+    }
 }
 
 #[test]
@@ -373,6 +464,7 @@ fn inject_unknown_agent_rejected() {
             &AgentCommand::Inject {
                 id: "nope".into(),
                 injection: injection(),
+                scenario_name: None,
             },
             None
         ),
@@ -395,6 +487,7 @@ fn inject_invalid_injection_rejected() {
             &AgentCommand::Inject {
                 id: "agent-1".into(),
                 injection: bad,
+                scenario_name: None,
             },
             None
         ),
@@ -562,6 +655,7 @@ fn dispatch_inject_and_rollback_through_agent_link() {
         AgentCommand::Inject {
             id: "game-01".into(),
             injection: injection(),
+            scenario_name: None,
         },
     );
     assert!(
@@ -640,6 +734,7 @@ fn queued_command_is_delivered_when_agent_reconnects() {
         AgentCommand::Inject {
             id: "game-01".into(),
             injection: injection(),
+            scenario_name: None,
         },
     );
     assert!(matches!(&resp, AgentResponse::Queued { agent_id, .. } if agent_id == "game-01"));
@@ -729,6 +824,7 @@ fn dispatch_to_silent_agent_times_out() {
         AgentCommand::Inject {
             id: "mute-01".into(),
             injection: injection(),
+            scenario_name: None,
         },
     );
     // Timeout is outcome-unknown, not an execution failure: the command stays
@@ -810,6 +906,7 @@ fn late_result_after_timeout_is_still_recorded() {
         AgentCommand::Inject {
             id: "late-01".into(),
             injection,
+            scenario_name: None,
         },
     );
     assert!(
@@ -881,6 +978,7 @@ fn link_disconnect_fails_inflight_dispatch() {
         AgentCommand::Inject {
             id: "drop-01".into(),
             injection: injection(),
+            scenario_name: None,
         },
     );
     // Either an explicit disconnect error or a timeout — but never a hang.
