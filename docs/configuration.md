@@ -10,7 +10,7 @@ FaultDeck has no config files — everything is passed as CLI flags/args at proc
 | `--token TOKEN` | unset → auth disabled | when set, every request line must start with `<token> ` |
 | `--interface IFACE` | `eth0` | interface for the `tc` adapter |
 | `--management CIDR` | empty | repeatable; protected networks, overlap rejects injection |
-| `--iptables PATH` | none | required for `disconnect`; without it the agent answers `iptables missing` |
+| `--iptables PATH` | `iptables` on PATH | optional override; defaults to `iptables` on PATH, so `disconnect` works out of the box on any host that has it installed (`iptables missing` if not) |
 | `--coordinator HOST:PORT` | none | link mode: reverse-dial the coordinator instead of listening |
 | `--agent-id ID` | none | registry id; required with `--coordinator` |
 | `--heartbeat-ms MS` | `10000` | link-mode heartbeat interval (link mode only) |

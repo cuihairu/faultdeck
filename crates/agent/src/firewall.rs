@@ -41,12 +41,15 @@ pub struct Iptables {
 }
 
 impl Iptables {
-    fn binary(&self) -> Result<&PathBuf> {
-        if let Some(path) = &self.path {
-            Ok(path)
-        } else {
-            Err(FirewallError::IptablesMissing)
-        }
+    fn binary(&self) -> PathBuf {
+        // When no explicit path is configured, fall back to `iptables` on PATH
+        // so a disconnect fault is usable out of the box on any host that has
+        // it installed. A missing binary surfaces as IptablesMissing below
+        // (audit 2026-11-11 P2: disconnect was unusable unless --iptables was
+        // passed, which made the default agent answer "iptables missing").
+        self.path
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("iptables"))
     }
 
     fn run(&self, args: &[&str]) -> Result<()> {
@@ -56,11 +59,14 @@ impl Iptables {
         if self.dry_run {
             return Ok(());
         }
-        let bin = self.binary()?;
-        let output = Command::new(bin)
-            .args(args)
-            .output()
-            .map_err(|e| FirewallError::Command(e.to_string()))?;
+        let bin = self.binary();
+        let output = Command::new(bin).args(args).output().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                FirewallError::IptablesMissing
+            } else {
+                FirewallError::Command(e.to_string())
+            }
+        })?;
         if output.status.success() {
             Ok(())
         } else {
@@ -241,4 +247,24 @@ pub fn validate_disconnect_target(injection: &Injection) -> Result<()> {
         return Err(FirewallError::MissingPort);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn binary_defaults_to_iptables_on_path_when_unset() {
+        // Regression (audit 2026-11-11 P2): with no --iptables the resolver
+        // answered IptablesMissing, so a default agent could never apply a
+        // disconnect. It must default to `iptables` on PATH (a missing binary
+        // then surfaces as IptablesMissing at spawn time).
+        let fw = Iptables::default();
+        assert_eq!(fw.binary(), PathBuf::from("iptables"));
+        let with_path = Iptables {
+            path: Some(PathBuf::from("/usr/sbin/iptables")),
+            ..Default::default()
+        };
+        assert_eq!(with_path.binary(), PathBuf::from("/usr/sbin/iptables"));
+    }
 }
