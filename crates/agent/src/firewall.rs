@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 
-use faultdeck_core::{FaultSpec, Injection, Target};
+use faultdeck_core::{FaultSpec, Injection};
 use ipnet::IpNet;
 use thiserror::Error;
 
@@ -23,6 +23,8 @@ pub enum FirewallError {
     Unsupported(String),
     #[error("target network must be IPv4")]
     TargetNotV4,
+    #[error("port-targeted disconnect requires a destination port (--port-spec)")]
+    MissingPort,
 }
 
 pub type Result<T> = std::result::Result<T, FirewallError>;
@@ -122,6 +124,7 @@ impl Iptables {
     }
 
     pub fn apply(&self, injection: &Injection) -> Result<()> {
+        validate_disconnect_target(injection)?;
         let target = &injection.target;
         // Pre-validate every network is IPv4 before touching iptables. The
         // server path rejects IPv6 up front, but apply()/process_request are
@@ -222,7 +225,20 @@ pub fn is_disconnect(injection: &Injection) -> bool {
     matches!(injection.fault, FaultSpec::Disconnect(_))
 }
 
-pub fn validate_disconnect_target(target: &Target) -> Result<()> {
-    let _ = target;
+/// Validate that a disconnect target is internally consistent. A port-targeted
+/// disconnect (`all_traffic == false`) drops tcp+udp on `--dport`, so it must
+/// name a port; without one the rule would silently widen to "any" protocol on
+/// the CIDR and drop far more traffic than the operator asked for (audit
+/// 2026-11-11 P2: this used to be an empty shell that was never called, so the
+/// validation was an illusion).
+pub fn validate_disconnect_target(injection: &Injection) -> Result<()> {
+    let FaultSpec::Disconnect(spec) = &injection.fault else {
+        // Not a disconnect: nothing to validate here. The firewall is only
+        // applied to disconnects, so this is a defensive no-op.
+        return Ok(());
+    };
+    if !spec.all_traffic && injection.target.destination_port.is_none() {
+        return Err(FirewallError::MissingPort);
+    }
     Ok(())
 }

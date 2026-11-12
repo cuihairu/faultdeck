@@ -208,6 +208,35 @@ fn apply_uses_source_destination_and_port_matches() {
 }
 
 #[test]
+fn port_targeted_disconnect_without_port_is_rejected() {
+    // Regression (audit 2026-11-11 P2): validate_disconnect_target was an
+    // empty shell that was never called, so a port-targeted disconnect with
+    // no destination port silently widened to an "any" protocol DROP on the
+    // whole CIDR — dropping far more traffic than requested. It must be
+    // rejected up front, before any iptables command runs.
+    use faultdeck_core::{DisconnectSpec, FaultSpec, Injection, Target};
+    use ipnet::IpNet;
+    use std::str::FromStr;
+
+    let (fw, calls) = recorder();
+    let injection = Injection {
+        fault: FaultSpec::Disconnect(DisconnectSpec { all_traffic: false }),
+        target: Target {
+            source: None,
+            destination: Some(IpNet::from_str("192.0.2.0/24").unwrap()),
+            destination_port: None,
+        },
+    };
+    let err = fw.apply(&injection).unwrap_err();
+    assert!(
+        err.to_string().contains("destination port"),
+        "expected a missing-port error, got: {err}"
+    );
+    // Nothing was installed: the validation runs before any iptables call.
+    assert!(calls.lock().unwrap().is_empty());
+}
+
+#[test]
 fn all_traffic_true_ignores_port() {
     use faultdeck_core::{DisconnectSpec, FaultSpec, Injection, Target};
     use ipnet::IpNet;
