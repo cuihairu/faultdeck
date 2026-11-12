@@ -77,6 +77,12 @@ enum RemoteSub {
         port: u16,
         #[arg(long, allow_hyphen_values = true)]
         token: Option<String>,
+        /// Report file written by a prior `remote inject --report-json`;
+        /// the rollback timestamp and event are folded back into it.
+        #[arg(long)]
+        report_json: Option<String>,
+        #[arg(long)]
+        report_html: Option<String>,
     },
 }
 
@@ -351,9 +357,35 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-            RemoteSub::Rollback { host, port, token } => {
+            RemoteSub::Rollback {
+                host,
+                port,
+                token,
+                report_json,
+                report_html,
+            } => {
                 let msg = send(&host, port, token.as_deref(), &WireRequest::Rollback)?;
                 println!("{msg}");
+                if let Some(report_json) = report_json {
+                    // A report written at inject time must not claim the fault
+                    // is still applied after a successful rollback: fold the
+                    // rollback timestamp and event back into it.
+                    let mut report: RunReport = serde_json::from_str(&std::fs::read_to_string(
+                        &report_json,
+                    )?)
+                    .map_err(|e| anyhow::anyhow!("cannot update report {report_json}: {e}"))?;
+                    let now = faultdeck_report::now_ms();
+                    report.rolled_back_at_ms = Some(now);
+                    report.events.push(faultdeck_report::FaultEvent {
+                        timestamp_ms: now,
+                        kind: "rollback".into(),
+                        message: msg.clone(),
+                    });
+                    std::fs::write(&report_json, report.to_json()?)?;
+                    if let Some(html) = report_html {
+                        std::fs::write(&html, report.to_html())?;
+                    }
+                }
             }
         },
         Command::Hub(hub) => match hub.sub {

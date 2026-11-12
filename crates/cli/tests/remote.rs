@@ -401,3 +401,138 @@ fn cli_send_times_out_on_unresponsive_server() {
     );
     server.join().unwrap();
 }
+
+#[test]
+fn cli_rollback_updates_the_inject_report() {
+    // Regression (audit 2026-11-11 P1.3): a report written at inject time
+    // used to keep rolled_back_at_ms unset forever, so rollback — an MVP
+    // acceptance gate — was never reflected in the report data. Passing the
+    // same --report-json to `remote rollback` must fold the rollback
+    // timestamp and event back into the file.
+    use std::net::TcpListener;
+    use std::process::Command;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let cfg = AgentConfig {
+        bind: addr.to_string(),
+        token: None,
+        interface: "eth0".into(),
+        management_networks: vec![],
+    };
+    let adapter = NetemAdapter::dry_run("eth0");
+    let firewall = Iptables {
+        dry_run: true,
+        path: None,
+        runner: None,
+    };
+    // Two connections: inject, then rollback. One shared applied state so the
+    // rollback actually finds the fault the inject left behind.
+    let applied = std::sync::Mutex::new(std::collections::HashSet::new());
+    std::thread::spawn(move || {
+        for _ in 0..2 {
+            if let Ok((stream, _)) = listener.accept() {
+                let _ = faultdeck_agent::handle_connection(
+                    &std::sync::Arc::new(cfg.clone()),
+                    &adapter,
+                    &firewall,
+                    &applied,
+                    stream,
+                );
+            }
+        }
+    });
+
+    let report = std::env::temp_dir().join(format!(
+        "faultdeck-rollback-report-{}-{}.json",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let html = std::env::temp_dir().join(format!(
+        "faultdeck-rollback-report-{}-{}.html",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let common = [
+        "--host",
+        &addr.ip().to_string(),
+        "--port",
+        &addr.port().to_string(),
+    ];
+
+    let output = Command::new(env!("CARGO_BIN_EXE_faultdeck"))
+        .args([
+            "remote",
+            "inject",
+            "--fault",
+            "latency",
+            "--destination",
+            "192.0.2.0/24",
+            "--milliseconds",
+            "100",
+            "--report-json",
+            report.to_str().unwrap(),
+        ])
+        .args(common)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "inject failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Before rollback the report must not claim one happened.
+    let content = std::fs::read_to_string(&report).unwrap();
+    let before: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert!(before["rolled_back_at_ms"].is_null());
+
+    let output = Command::new(env!("CARGO_BIN_EXE_faultdeck"))
+        .args([
+            "remote",
+            "rollback",
+            "--report-json",
+            report.to_str().unwrap(),
+            "--report-html",
+            html.to_str().unwrap(),
+        ])
+        .args(common)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "rollback failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = std::fs::read_to_string(&report).unwrap();
+    let after: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert!(
+        !after["rolled_back_at_ms"].is_null(),
+        "rolled_back_at_ms must be set after rollback"
+    );
+    let events = after["events"].as_array().unwrap();
+    assert!(
+        events.iter().any(|e| {
+            e["kind"] == "rollback"
+                && e["message"]
+                    .as_str()
+                    .map(|m| m.contains("rolled back"))
+                    .unwrap_or(false)
+        }),
+        "rollback event must be recorded, got {events:?}"
+    );
+
+    // The HTML twin carries the same truth.
+    let html_out = std::fs::read_to_string(&html).unwrap();
+    assert!(html_out.contains("Rolled back") || html_out.contains("rolled back"));
+
+    std::fs::remove_file(&report).unwrap();
+    std::fs::remove_file(&html).unwrap();
+}
