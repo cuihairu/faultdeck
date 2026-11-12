@@ -20,7 +20,7 @@ faultdeck remote inject … \
 ```json
 {
   "scenario_name": "combat-loss",
-  "scenario_yaml": "{ \"name\": … }",      // Scenario 的 JSON 序列化(字段名沿用历史命名)
+  "scenario_yaml": "name: combat-loss\n…",   // Scenario 的 YAML 序列化(字段名沿用历史命名)
   "scenario_hash": "<sha256 hex>",
   "injected_at_ms": 1730000000000,
   "rolled_back_at_ms": null,

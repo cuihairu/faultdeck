@@ -13,6 +13,8 @@ pub enum ReportError {
     InvalidHash,
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("yaml error: {0}")]
+    Yaml(#[from] serde_yaml::Error),
 }
 
 pub type Result<T> = std::result::Result<T, ReportError>;
@@ -42,8 +44,14 @@ pub struct Scenario {
 }
 
 impl Scenario {
+    /// Render the scenario as YAML. Previously this emitted JSON via
+    /// `serde_json::to_string_pretty`, so the `scenario_yaml` field claimed to
+    /// be YAML while carrying JSON (audit 2026-11-11 P2: "to_yaml actually
+    /// JSON"). YAML is a superset of JSON, so the old output parsed, but a
+    /// consumer expecting idiomatic YAML (block mappings, no braces) got the
+    /// wrong shape.
     pub fn to_yaml(&self) -> Result<String> {
-        serde_json::to_string_pretty(self).map_err(ReportError::Json)
+        serde_yaml::to_string(self).map_err(ReportError::Yaml)
     }
 
     pub fn hash(&self) -> String {

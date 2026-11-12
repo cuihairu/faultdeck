@@ -9,5 +9,6 @@ faultdeck-core = { path = "../core" }
 ipnet = { workspace = true, features = ["serde"] }
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml.workspace = true
 thiserror.workspace = true
 sha2 = "0.10"

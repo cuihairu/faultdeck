@@ -58,6 +58,23 @@ fn scenario_hash_stable() {
 }
 
 #[test]
+fn scenario_yaml_is_yaml_not_json() {
+    // Regression (audit 2026-11-11 P2): to_yaml emitted JSON via
+    // serde_json, so the scenario_yaml field promised YAML but carried JSON
+    // (braces and quoted keys). It must now render idiomatic block YAML.
+    let scenario = scenario();
+    let yaml = scenario.to_yaml().unwrap();
+    assert!(yaml.contains("name: latency-120ms"), "got: {yaml}");
+    assert!(
+        !yaml.contains('{') && !yaml.contains('}'),
+        "yaml must be block style, not JSON-flavored: {yaml}"
+    );
+    // The report field carries the same YAML content.
+    let report = RunReport::new(&scenario, now_ms());
+    assert!(report.scenario_yaml.contains("name: latency-120ms"));
+}
+
+#[test]
 fn historical_diff() {
     let scenario = scenario();
     let mut base = RunReport::new(&scenario, 1);

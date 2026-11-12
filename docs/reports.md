@@ -20,7 +20,7 @@ faultdeck remote inject … \
 ```json
 {
   "scenario_name": "combat-loss",
-  "scenario_yaml": "{ \"name\": … }",      // JSON serialization of the Scenario (historical field name kept)
+  "scenario_yaml": "name: combat-loss\n…",   // YAML serialization of the Scenario (field name kept)
   "scenario_hash": "<sha256 hex>",
   "injected_at_ms": 1730000000000,
   "rolled_back_at_ms": null,
