@@ -42,6 +42,10 @@ pub enum AdapterError {
     #[error("IPv6 target is unsupported by the current tc adapter")]
     UnsupportedIpv6,
     #[error(
+        "disconnect is not a netem fault; route it through the agent's firewall backend (iptables)"
+    )]
+    DisconnectNotNetem,
+    #[error(
         "interface {interface} already has root qdisc '{kind}' (handle {handle}); refusing to overwrite"
     )]
     ExistingRootQdisc {
@@ -395,7 +399,10 @@ where
             }
             CoreFaultSpec::Disconnect(_) => {
                 // Disconnect is handled by iptables in the agent; netem has no
-                // equivalent. Reaching this path is a programming error.
+                // equivalent. `validate` rejects it before `inject`/`plan`
+                // reach `apply_commands`, so this arm is a defensive no-op:
+                // emit no qdisc command rather than a phantom netem.
+                return vec![];
             }
         }
         vec![self.command(arguments)]
@@ -437,6 +444,13 @@ where
 }
 
 fn validate(injection: &Injection) -> Result<()> {
+    // Disconnect is a firewall (iptables) fault; the tc adapter has no way to
+    // express it. Reject it here so it can never silently degrade to a
+    // phantom netem qdisc with no delay/loss — the caller (agent) routes
+    // disconnects to the firewall backend instead (audit 2026-11-11 P2).
+    if matches!(injection.fault, CoreFaultSpec::Disconnect(_)) {
+        return Err(AdapterError::DisconnectNotNetem);
+    }
     match core_validate(injection) {
         Ok(()) => Ok(()),
         Err(CoreError::EmptyTarget) => Err(AdapterError::EmptyTarget),
@@ -554,6 +568,21 @@ mod tests {
         assert!(matches!(
             validate(&mixed),
             Err(AdapterError::UnsupportedIpv6)
+        ));
+    }
+
+    #[test]
+    fn rejects_disconnect_as_not_netem() {
+        // Disconnect is a firewall (iptables) fault; the tc adapter must
+        // refuse it instead of building a phantom netem qdisc that carries no
+        // delay/loss and never actually disconnects anything (audit P2).
+        let injection = Injection {
+            fault: CoreFaultSpec::Disconnect(faultdeck_core::DisconnectSpec { all_traffic: true }),
+            target: CoreTarget::destination(IpNet::from_str("192.0.2.0/24").unwrap()),
+        };
+        assert!(matches!(
+            validate(&injection),
+            Err(AdapterError::DisconnectNotNetem)
         ));
     }
 
