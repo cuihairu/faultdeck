@@ -1,0 +1,33 @@
+[package]
+name = "faultdeck-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "FaultDeck MCP server (stdio): exposes the CLI's existing coordinator injection chain to AI agents"
+
+[[bin]]
+name = "faultdeck-mcp"
+path = "src/main.rs"
+
+[dependencies]
+# Official Rust MCP SDK; server + stdio(io) transport, macros in default.
+rmcp = { version = "3.7", features = ["server", "transport-io"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+anyhow.workspace = true
+clap = { workspace = true }
+ipnet = { workspace = true, features = ["serde"] }
+serde.workspace = true
+serde_json.workspace = true
+# Same wire types and framing the CLI hub path uses — the MCP layer adds no
+# second injection implementation: faults are applied by the agent's netem /
+# iptables backends exactly as with the CLI.
+faultdeck-agent = { path = "../agent" }
+faultdeck-coordinator = { path = "../coordinator" }
+faultdeck-core = { path = "../core" }
+faultdeck-report = { path = "../report" }
+
+[dev-dependencies]
+# e2e: official client + child-process transport, real spawn of this crate's
+# binary over stdio (sandtable mcp_stdio.rs precedent).
+rmcp = { version = "3.7", features = ["client", "transport-child-process"] }
+tokio = { version = "1", features = ["process"] }

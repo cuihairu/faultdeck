@@ -14,6 +14,8 @@
 
 已实现的故障类型:延迟、丢包、断连(iptables)。黑洞与带宽限制在计划中。故障目前通过 CLI 按目标逐条下发;进房断网重连、战斗结算丢包重试、双服脑裂、Redis/DB 超时阻塞游戏逻辑等预置游戏场景模板在 P2 路线图。不绑定 KBEngine 或单一游戏服务器。
 
+AI agent 可经 MCP 驱动同一条链路:`faultdeck-mcp`(stdio,官方 rmcp SDK)面向 coordinator 暴露 `list_targets` / `apply_fault` / `clear_fault` / `run_scenario` / `read_report` ——与 CLI 共用同一套注入后端,MCP 层零第二套实现;仅上述已实现故障类型有对应工具。
+
 ## 每日构建
 
 最新滚动构建请到 **Releases 页**(`nightly` 发布)获取:

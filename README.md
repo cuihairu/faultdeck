@@ -13,6 +13,8 @@ English · [中文文档](README.zh.md)
 
 Shipped fault types: latency, packet loss, disconnect (iptables). Blackhole and bandwidth throttle are planned. Faults are composed per target with the CLI today; prebuilt game scenario templates (disconnect-on-room-join and reconnect, combat settlement packet-loss retry, dual-server brain split, Redis/DB timeouts blocking game logic) are on the P2 roadmap. Not bound to KBEngine or any single game server.
 
+AI agents can drive the same chain via MCP: `faultdeck-mcp` (stdio, official rmcp SDK) exposes `list_targets` / `apply_fault` / `clear_fault` / `run_scenario` / `read_report` against the coordinator — same injection backends as the CLI, no separate implementation; only the shipped fault types above have tools.
+
 ## Daily Builds
 
 Get the latest rolling build from the **Releases page** (the `nightly` release):
