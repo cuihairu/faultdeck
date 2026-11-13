@@ -218,3 +218,4 @@
 - [ ] 同步英文与中文文档中 `--iptables` 默认语义（`docs/remote-agents.md:22`）——消除 PATH 默认值修复的文档残留。
 - [ ] 让 `RunReport::new` 返回序列化错误而非空 YAML（`crates/report/src/lib.rs:103`）——避免静默丢失报告证据。
 - [ ] 修复后在可写构建环境中实跑 `cargo test --workspace` 并更新 `todo.md:181-184` 证据——确保勾选项与 HEAD 实际一致。
+- [ ] faultdeck MCP server（rmcp + stdio，照 sandtable-mcp 先例，2026-11-13 用户令「faultdeck 要有 MCP」）——把故障注入能力暴露给 AI agent：`apply_fault`/`clear_fault`（复用 CLI 既有注入链同一后端抽象，netem/iptables/WinDivert 不在 MCP 层重写）、`list_targets`（枚举可注入目标）、`run_scenario`（预置游戏场景模板：断线重连/战斗结算丢包/双机房脑裂）、`read_report`（RunReport 产物读取）。诚实边界：blackhole/bandwidth 未 shipped 不出对应工具。验收：`cargo test --workspace` 全绿（含新 crate）+ stdio e2e（initialize/tools list/call 各一）+ README 双语补 MCP 入口行 + 不绑死单一 backend。
