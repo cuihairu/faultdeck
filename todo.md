@@ -206,3 +206,15 @@
 - `crates/protocol/src` 是空目录，却被架构表列为占位；协议类型实际分散在 agent 和 coordinator（`crates/coordinator/src/lib.rs:98`）。建议移除目录或建立真实共享协议层时再保留。
 - CLI 自己定义并序列化 `WireRequest`/`WireResponse`，而 agent 拥有对应 `Request`/`Response`，存在无编译一致性的重复线协议定义（`crates/cli/src/main.rs:83`，`crates/agent/src/lib.rs:109`）。建议后续提取共享协议层或用同一类型导出。
 - `crates/coordinator/src/lib.rs` 从 `faultdeck-agent` 引用通用传输与常量时间比较，把传输能力和宿主库耦合进控制面依赖（`crates/coordinator/src/lib.rs:6`，`crates/coordinator/src/lib.rs:124`）。建议把传输和鉴权辅助迁移为独立共享库。
+
+## Codex 深审发现（2026-11-13，luna profile 近5 commit 审核，1C/2M/4m，待修）
+
+- [ ] 修复 `decode_token` 边界为 `i + 2 <= bytes.len()`（`crates/agent/src/lib.rs:92`）——恢复完整 token 解码。
+- [ ] 增加仅 `%XX`、以 `%XX` 结尾及全字节空间 token 的认证测试（`crates/agent/tests/agent.rs:403`）——锁定该回归路径。
+- [ ] 将 `decode_token` 改为按字节解码并要求合法 UTF-8（`crates/agent/src/lib.rs:87-105`）——避免 token 隐式替换。
+- [ ] 移除 `rollback` 对 `-X Too many links` 的容忍（`crates/agent/src/firewall.rs:221-224`）——不再把残留跳转链当成功。
+- [ ] 增加带残留跳转链的回滚失败测试（`crates/agent/tests/firewall.rs:157`）——覆盖真实脏状态。
+- [ ] 调整 `process_request` 的空状态回滚策略（`crates/agent/src/lib.rs:284-303`）——使 rollback 可清理进程重启后的残留规则。
+- [ ] 同步英文与中文文档中 `--iptables` 默认语义（`docs/remote-agents.md:22`）——消除 PATH 默认值修复的文档残留。
+- [ ] 让 `RunReport::new` 返回序列化错误而非空 YAML（`crates/report/src/lib.rs:103`）——避免静默丢失报告证据。
+- [ ] 修复后在可写构建环境中实跑 `cargo test --workspace` 并更新 `todo.md:181-184` 证据——确保勾选项与 HEAD 实际一致。
