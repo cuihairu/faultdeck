@@ -19,7 +19,7 @@ sudo faultdeck-agent \
 | `--interface` | `eth0` | `tc` 适配器操作的网卡 |
 | `--token` | 不设(鉴权关闭) | 设置后每个请求都必须携带共享密钥 |
 | `--management` | 空 | 可重复的保护网段;重叠即拒绝 |
-| `--iptables` | 无 | iptables 二进制路径;**`disconnect` 必需** |
+| `--iptables` | PATH 上的 `iptables` | 可选覆盖;PATH 上装有 `iptables` 时 `disconnect` 开箱即用(缺失时如实应答 `iptables missing`) |
 | `--coordinator` | 无 | 反向拨号的 coordinator `HOST:PORT`(link 模式,**Mode B**) |
 | `--agent-id` | 无 | coordinator 注册表中的 id;**`--coordinator` 时必需** |
 | `--heartbeat-ms` | `10000` | link 模式的心跳间隔(毫秒) |
@@ -76,7 +76,8 @@ faultdeck remote inject   --host AGENT --port 7000 [--token T] \
     --fault latency|loss|disconnect --destination CIDR [--port-spec P] \
     [--milliseconds MS] [--percent PCT] \
     [--scenario-name NAME] [--report-json F] [--report-html F]
-faultdeck remote rollback --host AGENT --port 7000 [--token T]
+faultdeck remote rollback --host AGENT --port 7000 [--token T] \
+    [--report-json F] [--report-html F]
 
 faultdeck hub list     --host COORD --port 7001 [--token T]
 faultdeck hub inject   --host COORD --port 7001 [--token T] --agent game-01 \
@@ -86,5 +87,7 @@ faultdeck hub rollback --host COORD --port 7001 [--token T] --agent game-01
 ```
 
 `hub inject`/`hub rollback` 最多等待 5 s 获取 agent 执行结果(经在线 link 下发);若 agent 离线,coordinator 会把指令入队并回复 `queued for {id} (pending N)` —— 该 agent 下次连上时自动补发。
+
+`faultdeck-mcp` 是第四个二进制:MCP server(stdio,官方 `rmcp` SDK),面向 AI agent 驱动同一条 `hub` 链路 —— `list_targets`、`apply_fault`、`clear_fault`、`run_scenario`、`read_report`。它只说 coordinator wire 协议,不存在第二套注入实现,暴露的故障类型与 CLI 完全一致。
 
 传输层 crate(`faultdeck_agent::transport`)暴露两种连接模式:**Mode A**(agent 监听,控制端拨入)与 **Mode B**(agent 穿 NAT 拨出,带重试/退避)。Mode B 已端到端可用:`faultdeck-agent --coordinator HOST:PORT --agent-id ID` 维持反向链路,coordinator 沿该链路下发排队指令。

@@ -43,14 +43,14 @@ AI agent 可经 MCP 驱动同一条链路:`faultdeck-mcp`(stdio,官方 rmcp SDK)
 ## 架构
 
 ```
-faultdeck CLI(→ 可选 Web UI)
+faultdeck CLI · faultdeck-mcp(AI agent,stdio) · 桌面 UI(Tauri)
   └ Rust Experiment Engine
        Scenario Planner / Target Resolver / Safety Guard
        Lifecycle+Rollback / Metrics / Report
        └ Fault Backend Adapters
             ├ tc/netem(Linux,已实现)      ├ iptables 断连(已实现)
             ├ Toxiproxy(TCP,计划中)      ├ WinDivert(Windows,计划中)
-            └ Chaos Mesh(K8s,可选)
+            └ Chaos Mesh(K8s,计划中)
 ```
 
 
@@ -83,12 +83,12 @@ agent 主动出站反向拨号,长连隧道(断线自动重连),指令与报告�
 | P0 | Rust CLI + Toxiproxy Adapter + 实验 YAML + 延迟/断线/黑洞/带宽 + 自动恢复 + JSON 报告(测试导向:游戏断线重连场景首发) | 部分落地——CLI、延迟/丢包/断连、显式回滚与 JSON 报告已实现;故障自动恢复、Toxiproxy Adapter、实验 YAML、黑洞/带宽待做 |
 | P1 | tc/netem Adapter、TCP/UDP、流量选择、突发丢包、乱序、netns 隔离 | 部分落地——tc/netem Adapter 与流量选择(源/目的/端口)已实现(`crates/netem`);突发丢包、乱序、netns 隔离待做 |
 | P2 | 游戏弱网/战斗断线/跨服隔离模板,集成 Wingman API、外部断言与报告 | 待 P1 |
-| P3 | WinDivert、可选 Web UI、多目标、远程 Agent、CI 集成 | 部分落地——远程 Agent(`crates/agent`)与 CI 构建/测试(`.github/workflows/rust.yml`)已实现;Coordinator 注册、经 agent 反向链路的在线 inject/rollback 下发、离线入队补发、在线状态与报告集中存档已实现;WinDivert 与 Web UI 待做 |
+| P3 | WinDivert、可选桌面 UI、多目标、远程 Agent、CI 集成 | 部分落地——远程 Agent(`crates/agent`)与 CI 构建/测试(`.github/workflows/rust.yml`)已实现;Coordinator 注册、经 agent 反向链路的在线 inject/rollback 下发、离线入队补发、在线状态与报告集中存档已实现;桌面 UI(Tauri,`crates/desktop`,平台安装器随 nightly 资产发布)已实现;WinDivert 待做 |
 
 ## 仓库结构
 
 ```
-crates/ core · netem · agent · cli · report · coordinator(protocol/ 为空占位)
+crates/ core · netem · agent · cli · report · coordinator · desktop · faultdeck-mcp(protocol/ 为空占位)
 docs/   vitepress 站点(https://cuihairu.github.io/faultdeck/)
 ```
 

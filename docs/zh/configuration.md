@@ -10,7 +10,7 @@ FaultDeck 没有配置文件 —— 一切都在进程启动时以 CLI 参数传
 | `--token TOKEN` | 不设 → 鉴权关闭 | 设置后每个请求行必须以 `<token> ` 开头 |
 | `--interface IFACE` | `eth0` | `tc` 适配器操作的网卡 |
 | `--management CIDR` | 空 | 可重复;保护网段,重叠即拒绝注入 |
-| `--iptables PATH` | 无 | `disconnect` 必需;缺失时 agent 应答 `iptables missing` |
+| `--iptables PATH` | PATH 上的 `iptables` | 可选覆盖;默认取 PATH 上的 `iptables`,因此装有它的任何主机开箱即可用 `disconnect`(缺失时如实应答 `iptables missing`) |
 | `--coordinator HOST:PORT` | 无 | link 模式:反向拨号 coordinator,不再监听 |
 | `--agent-id ID` | 无 | 注册表 id;`--coordinator` 时必需 |
 | `--heartbeat-ms MS` | `10000` | link 模式心跳间隔(毫秒,仅 link 模式) |
@@ -48,8 +48,8 @@ faultdeck-coordinator --bind 127.0.0.1:7001 [--token <shared-secret>]
 | `--port-spec` | `inject` | 无 | 可选目的端口匹配 |
 | `--milliseconds` | `inject --fault latency` | 该故障必需 | 延迟毫秒 |
 | `--percent` | `inject --fault loss` | 该故障必需 | 丢包百分比 |
-| `--scenario-name` | `inject` | `"scenario"` | 报告标签 |
-| `--report-json` | `remote inject` | 无 | 本地写 JSON 报告 |
-| `--report-html` | `remote inject` | 无 | 本地写 HTML 报告 |
+| `--scenario-name` | `inject` | `"scenario"`(`remote`);`hub inject` 由 coordinator 回落为 `{agent}-injection` | 报告标签 |
+| `--report-json` | `remote inject`、`remote rollback` | 无 | 本地写 JSON 报告;rollback 会把回滚时间与事件回写进去 |
+| `--report-html` | `remote inject`、`remote rollback` | 无 | 本地写 HTML 报告;rollback 会把回滚时间与事件回写进去 |
 
-唯一的环境变量是 `FAULTDECK_TIMEOUT_SECS`,覆盖 CLI 对 agent 连接默认 5 秒的读写超时(`crates/cli/src/main.rs`)。没有配置文件查找;agent 与 coordinator 也没有上述参数之外的选项。
+唯一的环境变量是 `FAULTDECK_TIMEOUT_SECS`,覆盖 CLI 对 `remote`/`hub` 连接默认 5 秒的读写超时(`crates/cli/src/main.rs`)。没有配置文件查找;agent 与 coordinator 也没有上述参数之外的选项。

@@ -19,7 +19,7 @@ sudo faultdeck-agent \
 | `--interface` | `eth0` | interface the `tc` adapter operates on |
 | `--token` | none (auth disabled) | shared secret required on every request when set |
 | `--management` | empty | repeatable protected CIDR; overlaps are rejected |
-| `--iptables` | none | path to the iptables binary; **required for `disconnect`** |
+| `--iptables` | `iptables` on PATH | optional override; `disconnect` works out of the box when `iptables` is on PATH (`iptables missing` is reported when it is absent) |
 | `--coordinator` | none | coordinator `HOST:PORT` to reverse-dial (link mode, **Mode B**) |
 | `--agent-id` | none | id used in the coordinator registry; **required with `--coordinator`** |
 | `--heartbeat-ms` | `10000` | link heartbeat interval in link mode |
@@ -80,7 +80,8 @@ faultdeck remote inject   --host AGENT --port 7000 [--token T] \
     --fault latency|loss|disconnect --destination CIDR [--port-spec P] \
     [--milliseconds MS] [--percent PCT] \
     [--scenario-name NAME] [--report-json F] [--report-html F]
-faultdeck remote rollback --host AGENT --port 7000 [--token T]
+faultdeck remote rollback --host AGENT --port 7000 [--token T] \
+    [--report-json F] [--report-html F]
 
 faultdeck hub list     --host COORD --port 7001 [--token T]
 faultdeck hub inject   --host COORD --port 7001 [--token T] --agent game-01 \
@@ -90,5 +91,7 @@ faultdeck hub rollback --host COORD --port 7001 [--token T] --agent game-01
 ```
 
 `hub inject`/`hub rollback` wait up to 5 s for the agent's execution result (dispatch to a live link); if the agent is offline the coordinator queues the command and replies `queued for {id} (pending N)` — it is delivered automatically the next time that agent connects.
+
+`faultdeck-mcp` is a fourth binary: an MCP server (stdio, official `rmcp` SDK) that drives the same `hub` chain for AI agents — `list_targets`, `apply_fault`, `clear_fault`, `run_scenario`, `read_report`. It speaks the coordinator wire protocol only; it never implements a second injection path, and it exposes the same shipped fault types as the CLI.
 
 The transport crate (`faultdeck_agent::transport`) exposes both connection modes: **Mode A** (agent listens, controller dials in) and **Mode B** (agent dials out through NAT with retry/backoff). Mode B is live end to end: `faultdeck-agent --coordinator HOST:PORT --agent-id ID` maintains the reverse link, and the coordinator dispatches queued commands down it.

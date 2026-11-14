@@ -17,13 +17,14 @@ cd faultdeck
 cargo build --release
 ```
 
-This produces three binaries:
+This produces four binaries:
 
 | binary | role |
 |---|---|
 | `faultdeck-agent` | resident daemon on the target host; applies faults |
 | `faultdeck` | CLI you run locally; talks to the agent over TCP |
 | `faultdeck-coordinator` | optional multi-target hub; agent registry, report archive, live dispatch over agent links |
+| `faultdeck-mcp` | optional MCP server (stdio) exposing the same hub chain to AI agents |
 
 ## 2. Start an agent
 
@@ -42,7 +43,7 @@ Flags (all optional except shown defaults):
 - `--interface` — NIC that `tc` operates on, default `eth0`
 - `--token` — shared secret; when set, every request must carry it
 - `--management` — repeatable CIDR that faults must never overlap (the agent warns loudly if you configure none)
-- `--iptables` — path to the `iptables` binary; **required for the `disconnect` fault**
+- `--iptables` — optional path override; defaults to `iptables` on PATH, so `disconnect` works out of the box on any host that has it installed
 
 ## 3. Ping, inject, roll back
 

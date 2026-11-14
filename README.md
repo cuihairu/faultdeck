@@ -42,14 +42,14 @@ Each asset ships with a `.sha256` checksum; the latest build is always the only 
 ## Architecture
 
 ```
-faultdeck CLI (→ optional Web UI)
+faultdeck CLI · faultdeck-mcp (AI agents, stdio) · desktop UI (Tauri)
   └ Rust Experiment Engine
        Scenario Planner / Target Resolver / Safety Guard
        Lifecycle+Rollback / Metrics / Report
        └ Fault Backend Adapters
             ├ tc/netem (Linux, live)         ├ iptables disconnect (live)
             ├ Toxiproxy (TCP, planned)       ├ WinDivert (Windows, planned)
-            └ Chaos Mesh (K8s, optional)
+            └ Chaos Mesh (K8s, planned)
 ```
 
 
@@ -82,12 +82,12 @@ The coordinator sits where both sides can reach; agents reverse-dial it and hold
 | P0 | Rust CLI + Toxiproxy adapter + experiment YAML + latency/disconnect/blackhole/bandwidth + auto recovery + JSON report (test-driven: game disconnect-reconnect scenario ships first) | Partially shipped — CLI, latency/loss/disconnect, explicit rollback and JSON report live; automatic fault recovery, Toxiproxy adapter, experiment YAML, blackhole/bandwidth pending |
 | P1 | tc/netem adapter, TCP/UDP, traffic selection, burst loss, reordering, netns isolation | Partially shipped — tc/netem adapter + traffic selection (src/dst/port) live in `crates/netem`; burst loss, reordering, netns isolation pending |
 | P2 | Game weak-network / combat-disconnect / cross-server-partition templates, Wingman API integration, external assertions & reports | Planned |
-| P3 | WinDivert, optional Web UI, multi-target, remote agent, CI integration | Partially shipped — remote agent (`crates/agent`) and CI build/test (`.github/workflows/rust.yml`) live; coordinator registration, live inject/rollback dispatch over agent reverse links, offline queueing, online status and central report archive live; WinDivert and Web UI pending |
+| P3 | WinDivert, optional desktop UI, multi-target, remote agent, CI integration | Partially shipped — remote agent (`crates/agent`) and CI build/test (`.github/workflows/rust.yml`) live; coordinator registration, live inject/rollback dispatch over agent reverse links, offline queueing, online status and central report archive live; desktop UI (Tauri, `crates/desktop`, platform installers in the nightly assets) live; WinDivert pending |
 
 ## Repository Layout
 
 ```
-crates/ core · netem · agent · cli · report · coordinator (protocol/ is an empty placeholder)
+crates/ core · netem · agent · cli · report · coordinator · desktop · faultdeck-mcp (protocol/ is an empty placeholder)
 docs/   vitepress site (https://cuihairu.github.io/faultdeck/)
 ```
 

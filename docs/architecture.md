@@ -97,6 +97,14 @@ The source responsibility layers are independent of crate-directory names. Terms
 
 `crates/report/src/lib.rs` owns `Scenario`, scenario hashing, `RunReport`, HTML rendering, timestamps, and report comparison (`crates/report/src/lib.rs:38`, `crates/report/src/lib.rs:49`, `crates/report/src/lib.rs:78`, `crates/report/src/lib.rs:110`, `crates/report/src/lib.rs:168`, `crates/report/src/lib.rs:182`). It is persistent-state-free; CLI and coordinator decide whether to retain output. Its Serde schema is the report model itself, HTML copy is generated in the same layer, and dedicated user prose is in [Reports](/reports).
 
+### 8. Agent-facing shell layer
+
+`crates/faultdeck-mcp/src/main.rs` is an MCP server (stdio, official `rmcp` SDK) that lets AI agents drive the fleet. Its five tools — `list_targets`, `apply_fault`, `clear_fault`, `run_scenario`, `read_report` — speak the coordinator wire protocol (`WireMessage`/`AgentCommand`) over the same `faultdeck_agent::transport` framing the CLI hub path uses (`crates/faultdeck-mcp/src/main.rs`). The layer has no injection implementation of its own: validation stays in the coordinator, application stays in the agent, and fault-kind availability is whatever the agents report through `list_targets`.
+
+### 9. Desktop shell layer
+
+`crates/desktop/src/lib.rs` is the Tauri desktop UI: fleet, injection and report views, with the Rust side calling `coordinator_list`, `coordinator_inject`, `coordinator_rollback` and `coordinator_report` (`crates/desktop/src/lib.rs:162`, `crates/desktop/src/lib.rs:172`, `crates/desktop/src/lib.rs:193`, `crates/desktop/src/lib.rs:204`). The Rust commands speak the coordinator wire protocol directly, so the UI adds no second control-plane path.
+
 ### Why these layers are split
 
 1. `core::Injection` is consumed by both direct CLI construction and coordinator validation, so semantic validation must not depend on either transport host (`crates/cli/src/main.rs:136`, `crates/coordinator/src/lib.rs:309`).

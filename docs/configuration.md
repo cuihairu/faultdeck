@@ -50,11 +50,11 @@ wire message must carry the matching token (see `remote-agents.md`). State
 | `--port-spec` | `inject` | none | optional destination-port match |
 | `--milliseconds` | `inject --fault latency` | required by that fault | delay |
 | `--percent` | `inject --fault loss` | required by that fault | loss percent |
-| `--scenario-name` | `inject` | `"scenario"` | report label |
-| `--report-json` | `remote inject` | none | write JSON report locally |
-| `--report-html` | `remote inject` | none | write HTML report locally |
+| `--scenario-name` | `inject` | `"scenario"` (`remote`); `hub inject` leaves it to the coordinator's `{agent}-injection` default | report label |
+| `--report-json` | `remote inject`, `remote rollback` | none | write JSON report locally; rollback folds its timestamp and event back in |
+| `--report-html` | `remote inject`, `remote rollback` | none | write HTML report locally; rollback folds its timestamp and event back in |
 
 One environment variable exists: `FAULTDECK_TIMEOUT_SECS` overrides the CLI's
-5-second default read/write timeout on agent connections
+5-second default read/write timeout on `remote` and `hub` connections
 (`crates/cli/src/main.rs`). There is no config file lookup, and the agent and
 coordinator have no options beyond the flags above.

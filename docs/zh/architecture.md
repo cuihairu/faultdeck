@@ -97,6 +97,14 @@ disconnect 故障完全绕过 `tc` —— 见 [Netem 故障](/zh/netem-faults#di
 
 `crates/report/src/lib.rs` 拥有 `Scenario`、场景哈希、`RunReport`、HTML 渲染、时间戳和报告比较(`crates/report/src/lib.rs:38`、`crates/report/src/lib.rs:49`、`crates/report/src/lib.rs:78`、`crates/report/src/lib.rs:110`、`crates/report/src/lib.rs:168`、`crates/report/src/lib.rs:182`)。该层无持久状态;CLI 和 coordinator 决定是否保留输出。其 Serde schema 就是报告模型本身,HTML 文案在同一层生成,专题文案在[场景报告](/zh/reports)。
 
+### 8. 面向 AI agent 的壳层
+
+`crates/faultdeck-mcp/src/main.rs` 是 MCP server(stdio,官方 `rmcp` SDK),让 AI agent 驱动机群。它暴露五个 tool —— `list_targets`、`apply_fault`、`clear_fault`、`run_scenario`、`read_report` —— 说的是 coordinator wire 协议(`WireMessage`/`AgentCommand`),走与 CLI hub 路径同一套 `faultdeck_agent::transport` 分帧(`crates/faultdeck-mcp/src/main.rs`)。该层没有任何注入实现:校验留在 coordinator,施加留在 agent,故障类型可用性由各 agent 经 `list_targets` 自己上报。
+
+### 9. 桌面壳层
+
+`crates/desktop/src/lib.rs` 是 Tauri 桌面 UI:车群/注入/报告三视图,Rust 侧调用 `coordinator_list`、`coordinator_inject`、`coordinator_rollback`、`coordinator_report`(`crates/desktop/src/lib.rs:162`、`crates/desktop/src/lib.rs:172`、`crates/desktop/src/lib.rs:193`、`crates/desktop/src/lib.rs:204`)。Rust 命令直说 coordinator wire 协议,因此 UI 不引入第二条控制面链路。
+
 ### 拆分理由
 
 1. `core::Injection` 同时被 CLI 直接构造和 coordinator 校验消费,语义校验不能依赖任一传输宿主(`crates/cli/src/main.rs:136`、`crates/coordinator/src/lib.rs:309`)。

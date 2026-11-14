@@ -17,13 +17,14 @@ cd faultdeck
 cargo build --release
 ```
 
-产出三个二进制:
+产出四个二进制:
 
 | 二进制 | 角色 |
 |---|---|
 | `faultdeck-agent` | 目标主机上的常驻守护进程,负责实际施加故障 |
 | `faultdeck` | 本地 CLI,通过 TCP 与 agent 通信 |
 | `faultdeck-coordinator` | 可选的多目标中枢;维护 agent 注册表与报告归档,经 agent 链路在线下发指令 |
+| `faultdeck-mcp` | 可选的 MCP server(stdio),把同一条 hub 链路暴露给 AI agent |
 
 ## 2. 启动 agent
 
@@ -42,7 +43,7 @@ sudo ./target/release/faultdeck-agent \
 - `--interface` —— `tc` 操作的网卡,默认 `eth0`
 - `--token` —— 共享密钥;设置后每个请求都必须携带
 - `--management` —— 可重复的保护网段 CIDR,故障目标绝不允许与之重叠(未配置时 agent 会大声警告)
-- `--iptables` —— iptables 二进制路径;**`disconnect` 故障必需**
+- `--iptables` —— 可选的路径覆盖;默认取 PATH 上的 `iptables`,因此装有它的任何主机开箱即可用 `disconnect`
 
 ## 3. Ping、注入、回滚
 
