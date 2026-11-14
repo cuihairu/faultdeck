@@ -1,6 +1,6 @@
 <p align="center"><img src="docs/public/logo.svg" width="64" height="64" alt="FaultDeck logo" /></p>
 
-<p align="center"><a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="License" /></a> <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-1.70+-000000?logo=rust&amp;logoColor=white" alt="Rust" /></a> <a href="docs/zh/design/mvp-plan.md"><img src="https://img.shields.io/badge/%E5%90%8E%E7%AB%AF-Toxiproxy%20%7C%20netem%20%7C%20WinDivert-blue" alt="Backends" /></a> <a href="#"><img src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Platform" /></a> <a href="#"><img src="https://img.shields.io/badge/%E7%8A%B6%E6%80%81-%E5%BC%80%E5%8F%91%E4%B8%AD-orange" alt="Status" /></a></p>
+<p align="center"><a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="License" /></a> <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-1.70+-000000?logo=rust&amp;logoColor=white" alt="Rust" /></a> <a href="docs/zh/design/mvp-plan.md"><img src="https://img.shields.io/badge/%E5%90%8E%E7%AB%AF-tc%2Fnetem%20%2B%20iptables-blue" alt="Backends" /></a> <a href="#"><img src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Platform" /></a> <a href="#"><img src="https://img.shields.io/badge/%E7%8A%B6%E6%80%81-%E5%BC%80%E5%8F%91%E4%B8%AD-orange" alt="Status" /></a></p>
 
 # FaultDeck · 面向游戏开发场景的故障模拟与测试工具
 
@@ -36,7 +36,7 @@ AI agent 可经 MCP 驱动同一条链路:`faultdeck-mcp`(stdio,官方 rmcp SDK)
 ## 核心理念
 
 - **实验 DSL 描述故障语义,Backend 决定实现方式**;Backend 不支持精确语义时返回「不支持」,不做静默近似
-- **不重造轮子**:底层引擎复用 Toxiproxy(TCP 代理)/ tc netem(Linux)/ WinDivert(Windows),FaultDeck 做编排、安全与报告
+- **不重造轮子**:底层引擎复用而非重造——tc netem(Linux)已用;Toxiproxy(TCP 代理)与 WinDivert(Windows)为计划引擎。FaultDeck 做编排、安全与报告
 - **可靠撤销是 MVP 硬性验收条件**,不是事后补丁
 - **安全隔离**:绝不把故障施加到承载 SSH/ZeroTier 管理流量的网卡
 
@@ -83,7 +83,7 @@ agent 主动出站反向拨号,长连隧道(断线自动重连),指令与报告�
 | P0 | Rust CLI + Toxiproxy Adapter + 实验 YAML + 延迟/断线/黑洞/带宽 + 自动恢复 + JSON 报告(测试导向:游戏断线重连场景首发) | 部分落地——CLI、延迟/丢包/断连、显式回滚与 JSON 报告已实现;故障自动恢复、Toxiproxy Adapter、实验 YAML、黑洞/带宽待做 |
 | P1 | tc/netem Adapter、TCP/UDP、流量选择、突发丢包、乱序、netns 隔离 | 部分落地——tc/netem Adapter 与流量选择(源/目的/端口)已实现(`crates/netem`);突发丢包、乱序、netns 隔离待做 |
 | P2 | 游戏弱网/战斗断线/跨服隔离模板,集成 Wingman API、外部断言与报告 | 待 P1 |
-| P3 | WinDivert、可选桌面 UI、多目标、远程 Agent、CI 集成 | 部分落地——远程 Agent(`crates/agent`)与 CI 构建/测试(`.github/workflows/rust.yml`)已实现;Coordinator 注册、经 agent 反向链路的在线 inject/rollback 下发、离线入队补发、在线状态与报告集中存档已实现;桌面 UI(Tauri,`crates/desktop`,平台安装器随 nightly 资产发布)已实现;WinDivert 待做 |
+| P3 | WinDivert、可选桌面 UI、多目标、远程 Agent、CI 集成 | 部分落地——远程 Agent(`crates/agent`)与 CI 构建/测试(`.github/workflows/rust.yml`)已实现;Coordinator 注册、经 agent 反向链路的在线 inject/rollback 下发、离线入队补发、在线状态与报告集中存档已实现;桌面 UI(Tauri,`crates/desktop`)已实现,目前仅为源码构建——尚未发布预编译安装器,nightly 构建排除了该 crate;WinDivert 待做 |
 
 ## 仓库结构
 

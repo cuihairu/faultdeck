@@ -25,7 +25,7 @@ This produces five binaries:
 | `faultdeck` | CLI you run locally; talks to the agent over TCP |
 | `faultdeck-coordinator` | optional multi-target hub; agent registry, report archive, live dispatch over agent links |
 | `faultdeck-mcp` | optional MCP server (stdio) exposing the same hub chain to AI agents |
-| `faultdeck-desktop` | optional Tauri desktop UI; building it needs the platform's Tauri system libraries (prebuilt installers ship as nightly assets) |
+| `faultdeck-desktop` | optional Tauri desktop UI; building it from source needs the platform's Tauri system libraries. No prebuilt installers are published yet — the nightly build excludes this crate (`.github/workflows/nightly.yml` `--exclude faultdeck-desktop`) |
 
 ## 2. Start an agent
 

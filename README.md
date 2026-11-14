@@ -1,6 +1,6 @@
 <p align="center"><img src="docs/public/logo.svg" width="64" height="64" alt="FaultDeck logo" /></p>
 
-<p align="center"><a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="License" /></a> <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-1.70+-000000?logo=rust&amp;logoColor=white" alt="Rust" /></a> <a href="docs/design/mvp-plan.md"><img src="https://img.shields.io/badge/backend-Toxiproxy%20%7C%20netem%20%7C%20WinDivert-blue" alt="Backends" /></a> <a href="#"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Platform" /></a> <a href="#"><img src="https://img.shields.io/badge/status-in%20development-orange" alt="Status" /></a></p>
+<p align="center"><a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="License" /></a> <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-1.70+-000000?logo=rust&amp;logoColor=white" alt="Rust" /></a> <a href="docs/design/mvp-plan.md"><img src="https://img.shields.io/badge/backend-tc%2Fnetem%20%2B%20iptables-blue" alt="Backends" /></a> <a href="#"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Platform" /></a> <a href="#"><img src="https://img.shields.io/badge/status-in%20development-orange" alt="Status" /></a></p>
 
 # FaultDeck · Game-Dev-Oriented Fault Simulation & Testing Tool
 
@@ -35,7 +35,7 @@ Each asset ships with a `.sha256` checksum; the latest build is always the only 
 ## Core Principles
 
 - **The experiment DSL describes fault semantics; the backend decides implementation.** If a backend cannot honor the exact semantics, it returns "unsupported" — never a silent approximation.
-- **No reinvented wheels:** the underlying engines are reused — Toxiproxy (TCP proxy), tc netem (Linux), WinDivert (Windows). FaultDeck owns orchestration, safety, and reporting.
+- **No reinvented wheels:** the underlying engines are reused, not reinvented — tc netem (Linux) today; Toxiproxy (TCP proxy) and WinDivert (Windows) are the planned engines. FaultDeck owns orchestration, safety, and reporting.
 - **Reliable rollback is an MVP acceptance gate**, not an afterthought.
 - **Safety isolation:** never apply faults to NICs/subnets carrying management traffic (SSH, ZeroTier).
 
@@ -82,7 +82,7 @@ The coordinator sits where both sides can reach; agents reverse-dial it and hold
 | P0 | Rust CLI + Toxiproxy adapter + experiment YAML + latency/disconnect/blackhole/bandwidth + auto recovery + JSON report (test-driven: game disconnect-reconnect scenario ships first) | Partially shipped — CLI, latency/loss/disconnect, explicit rollback and JSON report live; automatic fault recovery, Toxiproxy adapter, experiment YAML, blackhole/bandwidth pending |
 | P1 | tc/netem adapter, TCP/UDP, traffic selection, burst loss, reordering, netns isolation | Partially shipped — tc/netem adapter + traffic selection (src/dst/port) live in `crates/netem`; burst loss, reordering, netns isolation pending |
 | P2 | Game weak-network / combat-disconnect / cross-server-partition templates, Wingman API integration, external assertions & reports | Planned |
-| P3 | WinDivert, optional desktop UI, multi-target, remote agent, CI integration | Partially shipped — remote agent (`crates/agent`) and CI build/test (`.github/workflows/rust.yml`) live; coordinator registration, live inject/rollback dispatch over agent reverse links, offline queueing, online status and central report archive live; desktop UI (Tauri, `crates/desktop`, platform installers in the nightly assets) live; WinDivert pending |
+| P3 | WinDivert, optional desktop UI, multi-target, remote agent, CI integration | Partially shipped — remote agent (`crates/agent`) and CI build/test (`.github/workflows/rust.yml`) live; coordinator registration, live inject/rollback dispatch over agent reverse links, offline queueing, online status and central report archive live; desktop UI (Tauri, `crates/desktop`) live as a source build — no prebuilt installers are published yet, the nightly build excludes the crate; WinDivert pending |
 
 ## Repository Layout
 
