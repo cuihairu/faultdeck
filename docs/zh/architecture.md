@@ -77,27 +77,27 @@ disconnect 故障完全绕过 `tc` —— 见 [Netem 故障](/zh/netem-faults#di
 
 ### 2. 策略到后端翻译层
 
-`crates/netem/src/lib.rs` 通过 `NetemAdapter` 把已校验的延迟/丢包翻译成有序 `tc qdisc` 和 `filter` 命令(`crates/netem/src/lib.rs:172`、`crates/netem/src/lib.rs:199`、`crates/netem/src/lib.rs:204`)。执行端口是 `CommandExecutor`(`crates/netem/src/lib.rs:73`),命令 schema 是 `TcCommand`(`crates/netem/src/lib.rs:56`),运行输入为网卡名和可选 dry-run 执行器设置(`crates/netem/src/lib.rs:172`、`crates/netem/src/lib.rs:80`)。调用之间无状态、无网络协议;实现细节见 [架构](/zh/architecture#netem-适配器的失败处理)。
+`crates/netem/src/lib.rs` 通过 `NetemAdapter` 把已校验的延迟/丢包翻译成有序 `tc qdisc` 和 `filter` 命令(`crates/netem/src/lib.rs:177`、`crates/netem/src/lib.rs:196`、`crates/netem/src/lib.rs:203`)。执行端口是 `CommandExecutor`(`crates/netem/src/lib.rs:77`),命令 schema 是 `TcCommand`(`crates/netem/src/lib.rs:61`),运行输入为网卡名和可选 dry-run 执行器设置(`crates/netem/src/lib.rs:177`、`crates/netem/src/lib.rs:187`)。调用之间无状态、无网络协议;实现细节见 [架构](/zh/architecture#netem-适配器的失败处理)。
 
 ### 3. 宿主执行与防护层
 
-`crates/agent/src/lib.rs` 是 Agent 宿主:接收 TCP、鉴权、防护管理网段、解码请求、路由 disconnect 或 netem,并用 `Arc<Mutex<HashSet<String>>>` 保存活动故障标记(`crates/agent/src/lib.rs:171`、`crates/agent/src/lib.rs:326`、`crates/agent/src/lib.rs:340`)。配置 schema 是 `AgentConfig`(`crates/agent/src/lib.rs:90`),由 `crates/agent/src/main.rs:9` 填充;这些输入记录在[配置](/zh/configuration)。`crates/agent/src/firewall.rs:31` 的 `Iptables` 执行主机规则;协议类型仍在 `crates/agent/src/lib.rs:109` 和 `crates/agent/src/lib.rs:117`,没有专属协议文件。
+`crates/agent/src/lib.rs` 是 Agent 宿主:接收 TCP、鉴权、防护管理网段、解码请求、路由 disconnect 或 netem,并用 `Arc<Mutex<HashSet<String>>>` 保存活动故障标记(`crates/agent/src/lib.rs:312`、`crates/agent/src/lib.rs:417`、`crates/agent/src/lib.rs:237`)。配置 schema 是 `AgentConfig`(`crates/agent/src/lib.rs:137`),由 `crates/agent/src/main.rs:87` 填充;这些输入记录在[配置](/zh/configuration)。`crates/agent/src/firewall.rs:37` 的 `Iptables` 执行主机规则;协议类型仍在 `crates/agent/src/lib.rs:157` 和 `crates/agent/src/lib.rs:165`,没有专属协议文件。
 
 ### 4. 线传输与拓扑层
 
-`crates/agent/src/transport.rs` 拥有带界限的 NDJSON 分帧、Mode A 监听/接受和 Mode B 反向连接(`crates/agent/src/transport.rs:56`、`crates/agent/src/transport.rs:94`、`crates/agent/src/transport.rs:118`)。除已接受 socket 外无状态。分帧 schema 是通用 `send_frame`/`read_frame`(`crates/agent/src/transport.rs:57`、`crates/agent/src/transport.rs:65`)。在此分帧之上,`crates/agent/src/link.rs` 实现可用的 Mode B 链路会话 —— 注册信封、心跳线程、分发泵,以及可重连的 `run_link` 循环(`crates/agent/src/link.rs:77`、`crates/agent/src/link.rs:140`、`crates/agent/src/link.rs:184`)。拓扑文案在 [Agents](/zh/remote-agents),载荷类型分属 agent 与 coordinator 层,`crates/protocol/src` 为空目录。
+`crates/agent/src/transport.rs` 拥有带界限的 NDJSON 分帧、Mode A 监听/接受和 Mode B 反向连接(`crates/agent/src/transport.rs:27`、`crates/agent/src/transport.rs:94`、`crates/agent/src/transport.rs:118`)。除已接受 socket 外无状态。分帧 schema 是通用 `send_frame`/`read_frame`(`crates/agent/src/transport.rs:57`、`crates/agent/src/transport.rs:65`)。在此分帧之上,`crates/agent/src/link.rs` 实现可用的 Mode B 链路会话 —— 注册信封、心跳线程、分发泵,以及可重连的 `run_link` 循环(`crates/agent/src/link.rs:46`、`crates/agent/src/link.rs:77`、`crates/agent/src/link.rs:148`、`crates/agent/src/link.rs:192`)。拓扑文案在 [Agents](/zh/remote-agents),载荷类型分属 agent 与 coordinator 层,`crates/protocol/src` 为空目录。
 
 ### 5. 用户入口与报告物化层
 
-`crates/cli/src/main.rs` 把 `remote ping/inject/rollback` 与 `hub list/inject/rollback` 参数转换为共享 `Injection`,与 agent 或 coordinator 执行有超时的 TCP 交互,按需物化 JSON/HTML 报告并生成回放命令(`crates/cli/src/main.rs:136`、`crates/cli/src/main.rs:165`、`crates/cli/src/main.rs:227`、`crates/cli/src/main.rs:341`)。它没有服务端状态;文件输出由调用参数指定。命令 schema 是 `crates/cli/src/main.rs:22` 的 clap 树,唯一环境输入是 `FAULTDECK_TIMEOUT_SECS`(`crates/cli/src/main.rs:236`),用户旗标记录在[配置](/zh/configuration)。
+`crates/cli/src/main.rs` 把 `remote ping/inject/rollback` 与 `hub list/inject/rollback` 参数转换为共享 `Injection`,与 agent 或 coordinator 执行有超时的 TCP 交互,按需物化 JSON/HTML 报告并生成回放命令(`crates/cli/src/main.rs:142`、`crates/cli/src/main.rs:165`、`crates/cli/src/main.rs:226`、`crates/cli/src/main.rs:341`)。它没有服务端状态;文件输出由调用参数指定。命令 schema 是 `crates/cli/src/main.rs:22` 的 clap 树,唯一环境输入是 `FAULTDECK_TIMEOUT_SECS`(`crates/cli/src/main.rs:248`),用户旗标记录在[配置](/zh/configuration)。
 
 ### 6. 机群注册与控制面状态层
 
-`crates/coordinator/src/lib.rs` 运行多线程 TCP 中枢,把 agents、reports、存活链路 links 和每 agent 队列 queues 保存在 `Arc<Mutex<CoordinatorState>>`,同时处理控制端会话与 agent 反向链路(`crates/coordinator/src/lib.rs:156`、`crates/coordinator/src/lib.rs:270`、`crates/coordinator/src/lib.rs:455`、`crates/coordinator/src/lib.rs:503`)。全部状态易失。`AgentIdentity`、`AgentCommand`、`AgentResponse` 和 `WireMessage` 定义该协议(`crates/coordinator/src/lib.rs:51`、`crates/coordinator/src/lib.rs:69`、`crates/coordinator/src/lib.rs:80`、`crates/coordinator/src/lib.rs:235`);`crates/coordinator/src/main.rs:4` 提供 bind/token 输入并记录在[配置](/zh/configuration)。操作协议文案在 [Agents](/zh/remote-agents)。
+`crates/coordinator/src/lib.rs` 运行多线程 TCP 中枢,把 agents、reports、存活链路 links 和每 agent 队列 queues 保存在 `Arc<Mutex<CoordinatorState>>`,同时处理控制端会话与 agent 反向链路(`crates/coordinator/src/lib.rs:176`、`crates/coordinator/src/lib.rs:270`、`crates/coordinator/src/lib.rs:466`、`crates/coordinator/src/lib.rs:566`)。全部状态易失。`AgentIdentity`、`AgentCommand`、`AgentResponse` 和 `WireMessage` 定义该协议(`crates/coordinator/src/lib.rs:49`、`crates/coordinator/src/lib.rs:67`、`crates/coordinator/src/lib.rs:92`、`crates/coordinator/src/lib.rs:270`);`crates/coordinator/src/main.rs:4` 提供 bind/token 输入并记录在[配置](/zh/configuration)。操作协议文案在 [Agents](/zh/remote-agents)。
 
 ### 7. 证据与可复现模型层
 
-`crates/report/src/lib.rs` 拥有 `Scenario`、场景哈希、`RunReport`、HTML 渲染、时间戳和报告比较(`crates/report/src/lib.rs:38`、`crates/report/src/lib.rs:49`、`crates/report/src/lib.rs:78`、`crates/report/src/lib.rs:110`、`crates/report/src/lib.rs:168`、`crates/report/src/lib.rs:182`)。该层无持久状态;CLI 和 coordinator 决定是否保留输出。其 Serde schema 就是报告模型本身,HTML 文案在同一层生成,专题文案在[场景报告](/zh/reports)。
+`crates/report/src/lib.rs` 拥有 `Scenario`、场景哈希、`RunReport`、HTML 渲染、时间戳和报告比较(`crates/report/src/lib.rs:41`、`crates/report/src/lib.rs:57`、`crates/report/src/lib.rs:87`、`crates/report/src/lib.rs:118`、`crates/report/src/lib.rs:176`、`crates/report/src/lib.rs:190`)。该层无持久状态;CLI 和 coordinator 决定是否保留输出。其 Serde schema 就是报告模型本身,HTML 文案在同一层生成,专题文案在[场景报告](/zh/reports)。
 
 ### 8. 面向 AI agent 的壳层
 
@@ -109,10 +109,10 @@ disconnect 故障完全绕过 `tc` —— 见 [Netem 故障](/zh/netem-faults#di
 
 ### 拆分理由
 
-1. `core::Injection` 同时被 CLI 直接构造和 coordinator 校验消费,语义校验不能依赖任一传输宿主(`crates/cli/src/main.rs:136`、`crates/coordinator/src/lib.rs:309`)。
-2. netem 分别暴露 plan、inject、rollback;Agent 需要执行,而适配器和测试需要 dry 规划或记录命令(`crates/netem/src/lib.rs:199`、`crates/netem/src/lib.rs:204`、`crates/netem/src/lib.rs:232`)。
-3. netem 执行器是 trait,同一命令翻译可指向 Linux `tc`、dry-run 或测试记录器,而不改策略(`crates/netem/src/lib.rs:73`、`crates/netem/src/lib.rs:163`)。
-4. Disconnect 和包级故障的状态、原子性与回滚机制不同;Agent 将它们路由到独立的 `Iptables` 与 `NetemAdapter` 实现(`crates/agent/src/lib.rs:196`、`crates/agent/src/firewall.rs:117`、`crates/netem/src/lib.rs:204`)。
-5. Agent 的活动故障标记跨连接存在,但命令执行 socket 按连接接受;合并这两个生命周期会让恢复状态变成偶然实现(`crates/agent/src/lib.rs:340`、`crates/agent/src/lib.rs:341`)。
-6. coordinator 状态与分发路由同目标执行分离:中枢把控制端指令转成 agent 反向链路上的 `LinkMessage::Dispatch`(agent 离线时入队),而真正施加故障由 agent crate 负责(`crates/coordinator/src/lib.rs:351`、`crates/coordinator/src/lib.rs:660`)。
-7. 报告需要稳定哈希、回放文本和证据字段,不依赖调用者把它存文件还是 coordinator 内存(`crates/report/src/lib.rs:49`、`crates/report/src/lib.rs:92`、`crates/cli/src/main.rs:233`)。
+1. `core::Injection` 同时被 CLI 直接构造和 coordinator 校验消费,语义校验不能依赖任一传输宿主(`crates/cli/src/main.rs:142`、`crates/coordinator/src/lib.rs:351`)。
+2. netem 分别暴露 plan、inject、rollback;Agent 需要执行,而适配器和测试需要 dry 规划或记录命令(`crates/netem/src/lib.rs:203`、`crates/netem/src/lib.rs:208`、`crates/netem/src/lib.rs:236`)。
+3. netem 执行器是 trait,同一命令翻译可指向 Linux `tc`、dry-run 或测试记录器,而不改策略(`crates/netem/src/lib.rs:77`、`crates/netem/src/lib.rs:167`)。
+4. Disconnect 和包级故障的状态、原子性与回滚机制不同;Agent 将它们路由到独立的 `Iptables` 与 `NetemAdapter` 实现(`crates/agent/src/lib.rs:257`、`crates/agent/src/firewall.rs:132`、`crates/netem/src/lib.rs:208`)。
+5. Agent 的活动故障标记跨连接存在,但命令执行 socket 按连接接受;合并这两个生命周期会让恢复状态变成偶然实现(`crates/agent/src/lib.rs:417`、`crates/agent/src/lib.rs:429`)。
+6. coordinator 状态与分发路由同目标执行分离:中枢把控制端指令转成 agent 反向链路上的 `LinkMessage::Dispatch`(agent 离线时入队),而真正施加故障由 agent crate 负责(`crates/coordinator/src/lib.rs:252`、`crates/coordinator/src/lib.rs:741`)。
+7. 报告需要稳定哈希、回放文本和证据字段,不依赖调用者把它存文件还是 coordinator 内存(`crates/report/src/lib.rs:57`、`crates/report/src/lib.rs:87`、`crates/cli/src/main.rs:367`)。
