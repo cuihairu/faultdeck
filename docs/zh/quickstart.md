@@ -17,7 +17,7 @@ cd faultdeck
 cargo build --release
 ```
 
-产出四个二进制:
+产出五个二进制:
 
 | 二进制 | 角色 |
 |---|---|
@@ -25,6 +25,7 @@ cargo build --release
 | `faultdeck` | 本地 CLI,通过 TCP 与 agent 通信 |
 | `faultdeck-coordinator` | 可选的多目标中枢;维护 agent 注册表与报告归档,经 agent 链路在线下发指令 |
 | `faultdeck-mcp` | 可选的 MCP server(stdio),把同一条 hub 链路暴露给 AI agent |
+| `faultdeck-desktop` | 可选的 Tauri 桌面 UI;从源码构建需要平台对应的 Tauri 系统库(预编译安装器随 nightly 资产发布) |
 
 ## 2. 启动 agent
 
@@ -91,6 +92,6 @@ sudo ./target/release/faultdeck-agent \
 
 ## 下一步
 
-- [架构](/zh/architecture) —— 6 个 crate 如何协作
+- [架构](/zh/architecture) —— 8 个 crate 如何协作
 - [Netem 故障](/zh/netem-faults) —— 故障类型、校验边界、tc 结构
 - [Agent 与注册](/zh/remote-agents) —— 部署、鉴权与 coordinator 协议

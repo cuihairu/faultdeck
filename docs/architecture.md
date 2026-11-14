@@ -1,6 +1,6 @@
 # Architecture
 
-FaultDeck is a Rust workspace. The current implementation ships **six built crates** plus one empty placeholder (`faultdeck-protocol` — the directory exists but contains no `Cargo.toml` and is **not** a workspace member yet). The planned toxiproxy backend and scenario YAML DSL from the [MVP plan](/design/mvp-plan) are not implemented; today's backend is `tc netem` + `iptables`.
+FaultDeck is a Rust workspace. The current implementation ships **eight built crates** plus one empty placeholder (`faultdeck-protocol` — the directory exists but contains no `Cargo.toml` and is **not** a workspace member yet). The planned toxiproxy backend and scenario YAML DSL from the [MVP plan](/design/mvp-plan) are not implemented; today's backend is `tc netem` + `iptables`.
 
 ## Crates
 
@@ -12,6 +12,8 @@ FaultDeck is a Rust workspace. The current implementation ships **six built crat
 | `faultdeck-coordinator` | `faultdeck-coordinator` | multi-target hub: agent registry (register/heartbeat/list with online status), report archive, live inject/rollback dispatch over agent reverse links, per-agent queues for offline agents |
 | `faultdeck-report` | — | `Scenario`, `RunReport` (JSON/HTML), SHA-256 scenario hash, `compare_runs` history diff |
 | `faultdeck-cli` | `faultdeck` | CLI entry: `faultdeck remote ping / inject / rollback` (direct to agent) and `faultdeck hub list / inject / rollback` (via coordinator) |
+| `faultdeck-desktop` | `faultdeck-desktop` | Tauri desktop UI: fleet / injection / report views over `coordinator_list` · `coordinator_inject` · `coordinator_rollback` · `coordinator_report` (`crates/desktop/src/lib.rs`) |
+| `faultdeck-mcp` | `faultdeck-mcp` | MCP server for AI agents (stdio, official `rmcp` SDK): `list_targets` / `apply_fault` / `clear_fault` / `run_scenario` / `read_report` over the coordinator wire protocol |
 | `faultdeck-protocol` | — | *placeholder, not in workspace* |
 
 ## Interaction overview

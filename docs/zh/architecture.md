@@ -1,6 +1,6 @@
 # 架构
 
-FaultDeck 是一个 Rust workspace。当前实现包含 **6 个已构建 crate**,外加一个空占位(`faultdeck-protocol` —— 目录存在,但没有 `Cargo.toml`,**尚未加入 workspace**)。[MVP 计划](/zh/design/mvp-plan)中的 toxiproxy 后端与场景 YAML DSL 尚未实现;如今的实现后端是 `tc netem` + `iptables`。
+FaultDeck 是一个 Rust workspace。当前实现包含 **8 个已构建 crate**,外加一个空占位(`faultdeck-protocol` —— 目录存在,但没有 `Cargo.toml`,**尚未加入 workspace**)。[MVP 计划](/zh/design/mvp-plan)中的 toxiproxy 后端与场景 YAML DSL 尚未实现;如今的实现后端是 `tc netem` + `iptables`。
 
 ## Crate 一览
 
@@ -12,6 +12,8 @@ FaultDeck 是一个 Rust workspace。当前实现包含 **6 个已构建 crate**
 | `faultdeck-coordinator` | `faultdeck-coordinator` | 多目标中枢:agent 注册表(register/heartbeat/list 含在线状态)、报告归档、经 agent 反向链路在线下发 inject/rollback,离线 agent 指令入队 |
 | `faultdeck-report` | — | `Scenario`、`RunReport`(JSON/HTML)、SHA-256 场景哈希、`compare_runs` 历史 diff |
 | `faultdeck-cli` | `faultdeck` | CLI 入口:`faultdeck remote ping / inject / rollback`(直连 agent)与 `faultdeck hub list / inject / rollback`(经 coordinator) |
+| `faultdeck-desktop` | `faultdeck-desktop` | Tauri 桌面 UI:车群 / 注入 / 报告三视图,经 `coordinator_list` · `coordinator_inject` · `coordinator_rollback` · `coordinator_report` 调用 coordinator(`crates/desktop/src/lib.rs`) |
+| `faultdeck-mcp` | `faultdeck-mcp` | 面向 AI agent 的 MCP server(stdio,官方 `rmcp` SDK):`list_targets` / `apply_fault` / `clear_fault` / `run_scenario` / `read_report`,走 coordinator 线协议 |
 | `faultdeck-protocol` | — | *占位,不在 workspace 中* |
 
 ## 交互总览

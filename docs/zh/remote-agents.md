@@ -88,6 +88,6 @@ faultdeck hub rollback --host COORD --port 7001 [--token T] --agent game-01
 
 `hub inject`/`hub rollback` 最多等待 5 s 获取 agent 执行结果(经在线 link 下发);若 agent 离线,coordinator 会把指令入队并回复 `queued for {id} (pending N)` —— 该 agent 下次连上时自动补发。
 
-`faultdeck-mcp` 是第四个二进制:MCP server(stdio,官方 `rmcp` SDK),面向 AI agent 驱动同一条 `hub` 链路 —— `list_targets`、`apply_fault`、`clear_fault`、`run_scenario`、`read_report`。它只说 coordinator wire 协议,不存在第二套注入实现,暴露的故障类型与 CLI 完全一致。
+`faultdeck-mcp` 是另一个二进制:MCP server(stdio,官方 `rmcp` SDK),面向 AI agent 驱动同一条 `hub` 链路 —— `list_targets`、`apply_fault`、`clear_fault`、`run_scenario`、`read_report`。它只说 coordinator wire 协议,不存在第二套注入实现,暴露的故障类型与 CLI 完全一致。
 
 传输层 crate(`faultdeck_agent::transport`)暴露两种连接模式:**Mode A**(agent 监听,控制端拨入)与 **Mode B**(agent 穿 NAT 拨出,带重试/退避)。Mode B 已端到端可用:`faultdeck-agent --coordinator HOST:PORT --agent-id ID` 维持反向链路,coordinator 沿该链路下发排队指令。

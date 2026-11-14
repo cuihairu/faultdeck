@@ -17,7 +17,7 @@ cd faultdeck
 cargo build --release
 ```
 
-This produces four binaries:
+This produces five binaries:
 
 | binary | role |
 |---|---|
@@ -25,6 +25,7 @@ This produces four binaries:
 | `faultdeck` | CLI you run locally; talks to the agent over TCP |
 | `faultdeck-coordinator` | optional multi-target hub; agent registry, report archive, live dispatch over agent links |
 | `faultdeck-mcp` | optional MCP server (stdio) exposing the same hub chain to AI agents |
+| `faultdeck-desktop` | optional Tauri desktop UI; building it needs the platform's Tauri system libraries (prebuilt installers ship as nightly assets) |
 
 ## 2. Start an agent
 
@@ -91,6 +92,6 @@ See [Reports](/reports) for the report format and history diff.
 
 ## Next steps
 
-- [Architecture](/architecture) — how the 6 crates fit together
+- [Architecture](/architecture) — how the 8 crates fit together
 - [Netem Faults](/netem-faults) — fault types, validation bounds, tc layout
 - [Agents](/remote-agents) — deployment, auth, and the coordinator protocol
