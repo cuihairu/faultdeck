@@ -22,7 +22,7 @@ AI agent 可经 MCP 驱动同一条链路:`faultdeck-mcp`(stdio,官方 rmcp SDK)
 
 - **https://github.com/cuihairu/faultdeck/releases/tag/nightly**
 
-每天 05:17(北京时间)落一个新构建。按平台选择资产:
+每天 05:17(北京时间)跑一次构建;仅当代码有新鲜提交时才发布——HEAD 超过 48 小时未更新会跳过构建,因此安静期内沿用上一份二进制。按平台选择资产:
 
 | 资产 | 平台 | 验证 |
 |---|---|---|

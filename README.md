@@ -21,7 +21,7 @@ Get the latest rolling build from the **Releases page** (the `nightly` release):
 
 - **https://github.com/cuihairu/faultdeck/releases/tag/nightly**
 
-A new build lands daily (05:17 CST). Choose your asset:
+A build runs daily at 05:17 CST; it publishes only when the tree has fresh commits — the workflow skips the build when HEAD is more than 48 h old, so a quiet period leaves the previous binaries in place. Choose your asset:
 
 | Asset | Platform | Verify |
 |---|---|---|
