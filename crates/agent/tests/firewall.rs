@@ -163,7 +163,9 @@ fn rollback_is_idempotent_when_chain_absent() {
             Some(&"-F") => Err(FirewallError::Command(
                 "No chain/target/match by that name".into(),
             )),
-            Some(&"-X") => Err(FirewallError::Command("Too many links".into())),
+            Some(&"-X") => Err(FirewallError::Command(
+                "No chain/target/match by that name".into(),
+            )),
             _ => Ok(()),
         }
     });
@@ -173,6 +175,30 @@ fn rollback_is_idempotent_when_chain_absent() {
         runner: Some(runner),
     };
     fw.rollback().unwrap();
+}
+
+#[test]
+fn rollback_fails_when_chain_is_still_referenced() {
+    // Audit 2026-11-13: a leftover jump chain made `-X` answer "Too many
+    // links", which rollback used to swallow and report as success. That
+    // leaves the host with a live chain referenced by live jumps, so the
+    // failure must propagate to the operator instead of clearing state.
+    let runner = Arc::new(|args: &[&str]| -> Result<(), FirewallError> {
+        match args.first() {
+            Some(&"-X") => Err(FirewallError::Command("Too many links".into())),
+            _ => Ok(()),
+        }
+    });
+    let fw = Iptables {
+        dry_run: false,
+        path: None,
+        runner: Some(runner),
+    };
+    let err = fw.rollback().unwrap_err();
+    assert!(
+        err.to_string().contains("Too many links"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]

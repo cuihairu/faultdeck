@@ -97,10 +97,15 @@ pub struct RunReport {
 }
 
 impl RunReport {
-    pub fn new(scenario: &Scenario, injected_at_ms: u64) -> Self {
-        Self {
+    /// Build a report from a scenario. The scenario YAML is part of the report
+    /// evidence (replay and diff both read it), so a serialization failure is
+    /// returned instead of being swallowed into an empty string — a report
+    /// whose scenario text silently vanished would look complete while carrying
+    /// no reproducible evidence (audit 2026-11-13).
+    pub fn new(scenario: &Scenario, injected_at_ms: u64) -> Result<Self> {
+        Ok(Self {
             scenario_name: scenario.name.clone(),
-            scenario_yaml: scenario.to_yaml().unwrap_or_default(),
+            scenario_yaml: scenario.to_yaml()?,
             scenario_hash: scenario.hash(),
             injected_at_ms,
             rolled_back_at_ms: None,
@@ -108,7 +113,7 @@ impl RunReport {
             restore_evidence: Vec::new(),
             external_assertions: Vec::new(),
             replay_command: String::new(),
-        }
+        })
     }
 
     pub fn to_json(&self) -> Result<String> {

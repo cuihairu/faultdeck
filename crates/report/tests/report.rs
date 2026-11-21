@@ -18,7 +18,7 @@ fn scenario() -> Scenario {
 #[test]
 fn report_json_and_html() {
     let scenario = scenario();
-    let mut report = RunReport::new(&scenario, now_ms());
+    let mut report = RunReport::new(&scenario, now_ms()).unwrap();
     report.events.push(FaultEvent {
         timestamp_ms: 1,
         kind: "inject".into(),
@@ -70,20 +70,20 @@ fn scenario_yaml_is_yaml_not_json() {
         "yaml must be block style, not JSON-flavored: {yaml}"
     );
     // The report field carries the same YAML content.
-    let report = RunReport::new(&scenario, now_ms());
+    let report = RunReport::new(&scenario, now_ms()).unwrap();
     assert!(report.scenario_yaml.contains("name: latency-120ms"));
 }
 
 #[test]
 fn historical_diff() {
     let scenario = scenario();
-    let mut base = RunReport::new(&scenario, 1);
+    let mut base = RunReport::new(&scenario, 1).unwrap();
     base.events.push(FaultEvent {
         timestamp_ms: 1,
         kind: "inject".into(),
         message: "applied".into(),
     });
-    let mut comp = RunReport::new(&scenario, 2);
+    let mut comp = RunReport::new(&scenario, 2).unwrap();
     comp.events.push(FaultEvent {
         timestamp_ms: 2,
         kind: "inject".into(),
@@ -96,7 +96,7 @@ fn historical_diff() {
 #[test]
 fn to_html_escapes_malicious_input() {
     let scenario = scenario();
-    let mut report = RunReport::new(&scenario, now_ms());
+    let mut report = RunReport::new(&scenario, now_ms()).unwrap();
     report.scenario_name = "<script>alert(1)</script>".into();
     report.replay_command = "echo \"&amp; <b>\"".into();
     report.events.push(FaultEvent {

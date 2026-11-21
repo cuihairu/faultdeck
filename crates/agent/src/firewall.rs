@@ -218,10 +218,13 @@ impl Iptables {
         }
         // Flush then delete the chain, tolerating an absent chain.
         self.run_ignoring(&["-F", CHAIN, "-t", "mangle"], &["No chain", "No rule"])?;
-        self.run_ignoring(
-            &["-X", CHAIN, "-t", "mangle"],
-            &["No chain", "No rule", "Too many links"],
-        )?;
+        // An absent chain is a clean idempotent no-op, but "Too many links"
+        // means the chain is *still referenced*: the jump removal above did not
+        // take effect, so live traffic is still being redirected into the
+        // chain we just flushed. Treating that as success leaves the host in an
+        // unknown firewall state and reports "rolled back" to the operator
+        // (audit 2026-11-13: leftover jump chains must not read as success).
+        self.run_ignoring(&["-X", CHAIN, "-t", "mangle"], &["No chain", "No rule"])?;
         Ok(())
     }
 }

@@ -41,6 +41,8 @@ pub enum CoordinatorError {
     Unauthorized,
     #[error("invalid injection: {0}")]
     InvalidInjection(String),
+    #[error("report error: {0}")]
+    Report(String),
 }
 
 pub type Result<T> = std::result::Result<T, CoordinatorError>;
@@ -359,7 +361,8 @@ impl Coordinator {
                     injection: injection.clone(),
                 };
                 let hash = scenario.hash();
-                let report = RunReport::new(&scenario, faultdeck_report::now_ms());
+                let report = RunReport::new(&scenario, faultdeck_report::now_ms())
+                    .map_err(|e| CoordinatorError::Report(e.to_string()))?;
                 self.state
                     .lock()
                     .unwrap()

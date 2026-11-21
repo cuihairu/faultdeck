@@ -64,7 +64,7 @@ tc filter add dev IFACE protocol ip parent 100: prio 2 u32 match u32 0 0 flowid 
 
 - netem 路径:删除根 qdisc;`tc` 的「Cannot find / No such device」类错误视为已清理(幂等)。
 - firewall 路径:flush 并删除 `FAULTDECK` 链。
-- 当前无故障时,agent 应答 `nothing to roll back`。
+- 当前无故障时,agent 仍会 best-effort 跑两条回滚路径:`applied` 只在内存中,进程重启后内核可能仍保留上一轮的 `100:` qdisc 与 `FAULTDECK` 链。两条路径在无可清理时都是幂等的,因此 agent 应答 `no fault applied; no FaultDeck rules left on host`;若有后端清不掉,则返回指明该后端的错误(例如适配器拒绝替换的外部 root qdisc)。
 
 ## Dry-run 模式
 

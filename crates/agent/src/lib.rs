@@ -84,11 +84,21 @@ pub fn encode_token(token: &str) -> String {
 
 /// Inverse of [`encode_token`]. A malformed escape is left verbatim: it will
 /// simply not equal the configured token, so authorization fails closed.
-pub fn decode_token(encoded: &str) -> String {
+///
+/// Decoding is byte-exact and the result must be valid UTF-8. The wire bytes
+/// are already checked as a whole line, but a `%XX` escape can still reproduce
+/// an invalid sequence (`%FF` is a perfectly valid ASCII header), so the
+/// decoded bytes are validated instead of being silently rewritten into a run
+/// of replacement characters (audit 2026-11-13: implicit `from_utf8_lossy`
+/// substitution).
+pub fn decode_token(encoded: &str) -> std::result::Result<String, std::str::Utf8Error> {
     let bytes = encoded.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
+        // Two hex digits must both exist: the slice below needs indices i+1
+        // and i+2, so the boundary is `i + 2 < len`, not `i + 2 <= len` (the
+        // latter panics on a truncated trailing escape such as `ab%2`).
         if bytes[i] == b'%' && i + 2 < bytes.len() {
             if let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3]) {
                 if let Ok(v) = u8::from_str_radix(hex, 16) {
@@ -101,7 +111,7 @@ pub fn decode_token(encoded: &str) -> String {
         out.push(bytes[i]);
         i += 1;
     }
-    String::from_utf8_lossy(&out).into_owned()
+    String::from_utf8(out).map_err(|e| e.utf8_error())
 }
 
 /// Read a newline-delimited line with a hard byte ceiling.
@@ -282,8 +292,26 @@ where
         }
         Request::Rollback => {
             if applied.is_empty() {
-                return Response::Ok {
-                    message: "nothing to roll back".into(),
+                // `applied` is in memory only, so an agent restart clears it
+                // while the kernel keeps whatever the previous run installed:
+                // a stale `100:` qdisc and the FAULTDECK iptables chain. Both
+                // rollbacks are idempotent when there is nothing to remove, so
+                // clean both best-effort instead of answering "nothing to roll
+                // back" and leaving the host dirty (audit 2026-11-13).
+                let mut leftovers = Vec::new();
+                if let Err(e) = adapter.rollback() {
+                    leftovers.push(format!("netem: {e}"));
+                }
+                if let Err(e) = firewall.rollback() {
+                    leftovers.push(format!("firewall: {e}"));
+                }
+                return match leftovers.is_empty() {
+                    true => Response::Ok {
+                        message: "no fault applied; no FaultDeck rules left on host".into(),
+                    },
+                    false => Response::Error {
+                        message: leftovers.join("; "),
+                    },
                 };
             }
             let kind = applied.iter().next().cloned().unwrap_or_default();
@@ -338,7 +366,13 @@ where
     // The token is percent-encoded on the wire so one that itself contains a
     // space cannot be mistaken for the header delimiter (audit 2026-11-11 P2).
     let (maybe_token, payload) = match (config.token.is_some(), header.split_once(' ')) {
-        (true, Some((token_encoded, rest))) => (Some(decode_token(token_encoded)), rest),
+        (true, Some((token_encoded, rest))) => {
+            // A byte sequence that is not valid UTF-8 cannot be the configured
+            // token (config values are UTF-8), so it is treated as absent and
+            // authorization fails closed rather than substituting replacement
+            // characters (audit 2026-11-13).
+            (decode_token(token_encoded).ok(), rest)
+        }
         _ => (None, header),
     };
     if let Err(e) = authorize(config, maybe_token.as_deref()) {

@@ -64,7 +64,7 @@ tc filter add dev IFACE protocol ip parent 100: prio 2 u32 match u32 0 0 flowid 
 
 - netem path: deletes the root qdisc; `tc` "Cannot find / No such device" style errors are treated as already-clean (idempotent).
 - firewall path: flush + delete the `FAULTDECK` chain.
-- With nothing applied, the agent answers `nothing to roll back`.
+- With nothing applied, the agent still runs both rollbacks best-effort: `applied` is in memory only, so after a process restart the kernel may still hold the previous run's `100:` qdisc and `FAULTDECK` chain. Both paths are idempotent when there is nothing to remove, so the agent answers `no fault applied; no FaultDeck rules left on host`, or an error naming the backend that could not clean up (for example an external root qdisc that the adapter refuses to replace).
 
 ## Dry-run mode
 

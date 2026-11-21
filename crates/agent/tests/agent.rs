@@ -410,7 +410,7 @@ fn token_encoding_roundtrips_and_keeps_plain_tokens() {
         "my%20secret%20token"
     );
     assert_eq!(
-        faultdeck_agent::decode_token("my%20secret%20token"),
+        faultdeck_agent::decode_token("my%20secret%20token").unwrap(),
         "my secret token"
     );
     // Unreserved bytes pass through unchanged (plain tokens are wire-identical).
@@ -419,17 +419,95 @@ fn token_encoding_roundtrips_and_keeps_plain_tokens() {
         "plain-token_1"
     );
     assert_eq!(
-        faultdeck_agent::decode_token("plain-token_1"),
+        faultdeck_agent::decode_token("plain-token_1").unwrap(),
         "plain-token_1"
     );
     // Percent and non-ASCII bytes survive a roundtrip.
     let tricky = "100% sure / café ☕";
     assert_eq!(
-        faultdeck_agent::decode_token(&faultdeck_agent::encode_token(tricky)),
+        faultdeck_agent::decode_token(&faultdeck_agent::encode_token(tricky)).unwrap(),
         tricky
     );
     // A malformed escape is left verbatim rather than panicking.
-    assert_eq!(faultdeck_agent::decode_token("abc%ZZ"), "abc%ZZ");
+    assert_eq!(faultdeck_agent::decode_token("abc%ZZ").unwrap(), "abc%ZZ");
+}
+
+#[test]
+fn decode_token_handles_escapes_at_and_past_the_end_boundary() {
+    // Audit 2026-11-13 item "restore full token decoding": the boundary was
+    // reported as broken. It is not — an escape whose hex digits end exactly on
+    // the last byte decodes fine, because the slice below needs indices i+1 and
+    // i+2, so the right guard is `i + 2 < len`. The reported fix `i + 2 <= len`
+    // would instead panic on a truncated trailing escape (`ab%2`), so these
+    // cases pin the boundary from both sides.
+    assert_eq!(faultdeck_agent::decode_token("%20").unwrap(), " ");
+    assert_eq!(faultdeck_agent::decode_token("a%20").unwrap(), "a ");
+    // An all-escape token is legal: it is a token made only of spaces.
+    assert_eq!(faultdeck_agent::decode_token("%20%20").unwrap(), "  ");
+    assert_eq!(faultdeck_agent::encode_token("  "), "%20%20");
+    // Truncated escapes stay literal — no panic, no partial consumption.
+    assert_eq!(faultdeck_agent::decode_token("ab%2").unwrap(), "ab%2");
+    assert_eq!(faultdeck_agent::decode_token("ab%").unwrap(), "ab%");
+    assert_eq!(faultdeck_agent::decode_token("%").unwrap(), "%");
+    assert_eq!(faultdeck_agent::decode_token("ab%Z").unwrap(), "ab%Z");
+}
+
+#[test]
+fn decode_token_rejects_invalid_utf8_bytes() {
+    // Audit 2026-11-13 item "require valid UTF-8": previously a non-UTF-8 byte
+    // sequence was silently rewritten through `from_utf8_lossy` into a run of
+    // U+FFFD. That is now an error so the agent can fail authorization closed
+    // instead of comparing a substituted string. `%FF` is a valid ASCII header,
+    // which is exactly why the strictness lives here.
+    assert!(faultdeck_agent::decode_token("%FF").is_err());
+    assert!(faultdeck_agent::decode_token("a%80b").is_err());
+    assert!(faultdeck_agent::decode_token("%C0%AF").is_err());
+    // Legitimate multi-byte sequences still decode.
+    assert_eq!(faultdeck_agent::decode_token("%C3%A9").unwrap(), "é");
+    assert_eq!(faultdeck_agent::decode_token("caf%C3%A9").unwrap(), "café");
+}
+
+#[test]
+fn auth_rejects_wire_token_that_decodes_to_invalid_utf8() {
+    // The configured token is a valid UTF-8 string, so a header whose percent
+    // escapes decode to invalid UTF-8 must be rejected outright rather than
+    // compared after substitution. The header itself is pure ASCII (`%FF`), so
+    // the line-level UTF-8 check passes and the strictness has to live in the
+    // token decoder.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let cfg = AgentConfig {
+        token: Some("secret".into()),
+        ..config()
+    };
+    let adapter = NetemAdapter::dry_run("eth0");
+    let firewall = Iptables {
+        dry_run: true,
+        path: None,
+        runner: None,
+    };
+    let thread = std::thread::spawn(move || {
+        if let Ok((stream, _)) = listener.accept() {
+            let applied = std::sync::Mutex::new(std::collections::HashSet::new());
+            let _ = handle_connection(
+                &std::sync::Arc::new(cfg),
+                &adapter,
+                &firewall,
+                &applied,
+                stream,
+            );
+        }
+    });
+
+    let mut stream = TcpStream::connect(addr).unwrap();
+    stream.write_all(b"%FFsecret {\"cmd\":\"ping\"}\n").unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    assert!(
+        response.contains("\"error\""),
+        "unexpected response: {response}"
+    );
+    thread.join().unwrap();
 }
 
 #[test]

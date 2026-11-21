@@ -337,7 +337,7 @@ fn main() -> anyhow::Result<()> {
                         name: scenario_name.clone().unwrap_or_else(|| "scenario".into()),
                         injection: injection.clone(),
                     };
-                    let mut report = RunReport::new(&scenario, faultdeck_report::now_ms());
+                    let mut report = RunReport::new(&scenario, faultdeck_report::now_ms())?;
                     let mut replay = format!(
                         "faultdeck remote inject --fault {} --destination={} --host={} --port {}",
                         match fault {
