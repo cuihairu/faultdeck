@@ -52,11 +52,50 @@ const zhSidebar = [
   },
 ]
 
+// First-visit language bootstrap: sends a browser-locale-matching visitor to
+// the matching site locale (todo 2026-11-14 G2, implemented 2026-11-21).
+// Only pages that exist in BOTH locales are ever redirected — the whitelist
+// below is the en/zh mirror set, so the redirect can never land on a 404 for
+// en-only internal docs (design/desktop-ui, review/*, 审计-文档一致性).
+// A manual pick via the nav language links is stored by theme/index.ts and
+// always wins over detection; the stored key also makes the redirect
+// one-shot, so there is no bounce loop.
+const LANG_BOOTSTRAP = `(function () {
+  try {
+    var BASE = '/faultdeck/';
+    var KEY = 'faultdeck-lang';
+    var MIRROR = ['', 'quickstart', 'architecture', 'configuration', 'glossary', 'netem-faults', 'remote-agents', 'reports', 'design/mvp-plan'];
+    var rel = location.pathname;
+    if (rel.indexOf(BASE) === 0) rel = rel.slice(BASE.length);
+    rel = rel.replace(/\\.html$/, '').replace(/\\/$/, '');
+    var inZh = rel === 'zh' || rel.indexOf('zh/') === 0;
+    var rest = inZh ? rel.slice(3) : rel;
+    if (MIRROR.indexOf(rest) === -1) return;
+    var want = localStorage.getItem(KEY);
+    if (want !== 'zh' && want !== 'en') {
+      var langs = navigator.languages || [navigator.language || ''];
+      want = '';
+      for (var i = 0; i < langs.length; i++) {
+        var l = String(langs[i] || '').toLowerCase();
+        if (l.indexOf('zh') === 0) { want = 'zh'; break; }
+        if (l.indexOf('en') === 0) { want = 'en'; break; }
+      }
+      if (!want) return;
+      localStorage.setItem(KEY, want);
+    }
+    var target = BASE + (want === 'zh' ? 'zh/' : '') + (rest ? rest + '/' : '');
+    if (target !== location.pathname) location.replace(target + location.search + location.hash);
+  } catch (e) {}
+})();`
+
 export default defineConfig({
   base: '/faultdeck/',
   title: 'FaultDeck',
   description: 'Game-dev-oriented fault simulation & testing tool',
-  head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/faultdeck/favicon.svg' }]],
+  head: [
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/faultdeck/favicon.svg' }],
+    ['script', {}, LANG_BOOTSTRAP],
+  ],
   themeConfig: {
     nav: [
       { text: 'English', link: '/' },
