@@ -1079,7 +1079,6 @@ dependencies = [
  "anyhow",
  "faultdeck-core",
  "faultdeck-netem",
- "faultdeck-report",
  "ipnet",
  "serde",
  "serde_json",
