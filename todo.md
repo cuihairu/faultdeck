@@ -209,16 +209,24 @@
 
 ## Codex 深审发现（2026-11-13，luna profile 近5 commit 审核，1C/2M/4m，待修）
 
-- [ ] 修复 `decode_token` 边界为 `i + 2 <= bytes.len()`（`crates/agent/src/lib.rs:92`）——恢复完整 token 解码。
-- [ ] 增加仅 `%XX`、以 `%XX` 结尾及全字节空间 token 的认证测试（`crates/agent/tests/agent.rs:403`）——锁定该回归路径。
-- [ ] 将 `decode_token` 改为按字节解码并要求合法 UTF-8（`crates/agent/src/lib.rs:87-105`）——避免 token 隐式替换。
-- [ ] 移除 `rollback` 对 `-X Too many links` 的容忍（`crates/agent/src/firewall.rs:221-224`）——不再把残留跳转链当成功。
-- [ ] 增加带残留跳转链的回滚失败测试（`crates/agent/tests/firewall.rs:157`）——覆盖真实脏状态。
-- [ ] 调整 `process_request` 的空状态回滚策略（`crates/agent/src/lib.rs:284-303`）——使 rollback 可清理进程重启后的残留规则。
+- [x] 修复 `decode_token` 边界为 `i + 2 <= bytes.len()`（`crates/agent/src/lib.rs:92`）——恢复完整 token 解码。**非缺陷裁定（2026-11-21 复核,未改代码）**：边界本就正确。切片 `&bytes[i+1..i+3]` 需要下标 i+1 与 i+2,故正确守卫就是 `i + 2 < bytes.len()`;实测 `decode_token("%20")`=" "、`decode_token("a%20")`="a "、`decode_token("ab%2B")`="ab+",末尾完整转义本就能解码,所谓「token 解码不完整」不存在。按原文改成 `<=` 会引入 panic:`ab%2` 触发 `range end index 5 out of range for slice of length 4`(`ab%` 同理)。处置:边界处加注释锁定(crates/agent/src/lib.rs:99-102),由下条的新测试从两侧钉住,免得后人「修」出 panic;证据 commit a9d9175。
+  - 取证:独立 rustc 复现两份实现,现行 `<` 对 `%20`/`a%20`/`ab%2B`/`x%20y` 全部 OK;`<=` 写法对 `ab%2`、`x%2`、`ab%` panic(panic 捕获为 true)。
+- [x] 增加仅 `%XX`、以 `%XX` 结尾及全字节空间 token 的认证测试（`crates/agent/tests/agent.rs:403`）——锁定该回归路径。
+  - 修复:新增 `decode_token_handles_escapes_at_and_past_the_end_boundary`(`%20` 仅转义、`a%20` 末尾转义、`%20%20` 全空格 token、`ab%2`/`ab%`/`%`/`ab%Z` 截断转义按字面量且不得 panic),既有 roundtrip 测试同步 Result 化;证据 commit a9d9175。
+- [x] 将 `decode_token` 改为按字节解码并要求合法 UTF-8（`crates/agent/src/lib.rs:87-105`）——避免 token 隐式替换。
+  - 修复:签名改 `std::result::Result<String, std::str::Utf8Error>`(crates/agent/src/lib.rs:94),移除 `from_utf8_lossy`(原先 `%FF` 会被静默替换成 U+FFFD 再参与比较);调用点 crates/agent/src/lib.rs:374 用 `.ok()`,解码失败视为「无 token」从而 fail-closed;测试 `decode_token_rejects_invalid_utf8_bytes`(`%FF`/`a%80b`/`%C0%AF` 报错,`%C3%A9`→é、`caf%C3%A9`→café 正常)与 `auth_rejects_wire_token_that_decodes_to_invalid_utf8`(走 handle_connection 真实首行解析:头 `%FFsecret` 是纯 ASCII、能通过整行 UTF-8 检查,严格性必须落在 token 解码处);证据 commit a9d9175。
+- [x] 移除 `rollback` 对 `-X Too many links` 的容忍（`crates/agent/src/firewall.rs:221-224`）——不再把残留跳转链当成功。
+  - 修复:`-X` 的忽略列表只剩「No chain / No rule」(幂等的「链已不存在」),「Too many links」= 链仍被跳转引用,即上方跳转删除未生效、流量仍在被导入刚 flush 的链,故必须把错误抛给操作员而非报「已回滚」(crates/agent/src/firewall.rs:221-227);证据 commit a9d9175。
+- [x] 增加带残留跳转链的回滚失败测试（`crates/agent/tests/firewall.rs:157`）——覆盖真实脏状态。
+  - 修复:新增 `rollback_fails_when_chain_is_still_referenced`(`-X` 回 Too many links → `rollback()` 报错且信息含原文);既有 `rollback_is_idempotent_when_chain_absent` 的 `-X` 分支改回「No chain/target/match by that name」,继续验证「链已不存在」的幂等成功路径;证据 commit a9d9175。
+- [x] 调整 `process_request` 的空状态回滚策略（`crates/agent/src/lib.rs:284-303`）——使 rollback 可清理进程重启后的残留规则。
+  - 修复:`applied` 只在内存中,进程重启会清空它但内核仍保留上一轮的 `100:` qdisc 与 FAULTDECK 链,原先直接回「nothing to roll back」会让主机带着脏规则。改为空状态时 best-effort 跑 `adapter.rollback()` + `firewall.rollback()`(两条路径无可清理时均幂等),全清则回 `no fault applied; no FaultDeck rules left on host`(crates/agent/src/lib.rs:310),清不掉则回指明后端的错误(如适配器拒绝替换的外部 root qdisc);同步文档口径 docs/netem-faults.md 与 docs/zh/netem-faults.md 的「nothing to roll back」行;证据 commit a9d9175。
 - [x] 同步英文与中文文档中 `--iptables` 默认语义（`docs/remote-agents.md:22`）——消除 PATH 默认值修复的文档残留。
   - 修复：G2 巡检（2026-11-14）按源码事实统一五处口径（`crates/agent/src/firewall.rs:44-52` 未配置时回落 PATH 上的 `iptables`）——`docs/remote-agents.md`、`docs/zh/remote-agents.md`、`docs/quickstart.md`、`docs/zh/quickstart.md`、`docs/zh/configuration.md` 全部改为「可选覆盖,默认取 PATH,装上即开箱可用」;英文 `docs/configuration.md` 的同行口径本轮一并核过;证据:落表 G2-1(审计 docs/审计-文档一致性.md Round G2)
-- [ ] 让 `RunReport::new` 返回序列化错误而非空 YAML（`crates/report/src/lib.rs:103`）——避免静默丢失报告证据。
-- [ ] 修复后在可写构建环境中实跑 `cargo test --workspace` 并更新 `todo.md:181-184` 证据——确保勾选项与 HEAD 实际一致。
+- [x] 让 `RunReport::new` 返回序列化错误而非空 YAML（`crates/report/src/lib.rs:103`）——避免静默丢失报告证据。
+  - 修复:签名改 `Result<Self>`(crates/report/src/lib.rs:105),`scenario_yaml` 由 `to_yaml().unwrap_or_default()` 改为 `to_yaml()?`——原先序列化失败会产出一个看起来完整、scenario 文本却为空的报告,而 replay/diff 都读它;调用点 crates/cli/src/main.rs:340 用 `?`、crates/coordinator/src/lib.rs:365 映射为新增的 `CoordinatorError::Report`;测试侧 5 处加 `.unwrap()`;证据 commit a9d9175。
+- [x] 修复后在可写构建环境中实跑 `cargo test --workspace` 并更新 `todo.md:181-184` 证据——确保勾选项与 HEAD 实际一致。
+  - 证据:2026-11-21 按 CI 口径实跑(.github/workflows/rust.yml:31-32)`cargo clippy --workspace --exclude faultdeck-desktop --all-targets -- -D warnings` + `cargo test --workspace --exclude faultdeck-desktop`:clippy 零 error(仅 cargo 自身的 `warning: unused dependency faultdeck-report`,非 rustc 告警、`-D warnings` 不覆盖),测试 **107 passed / 0 failed**(24 个测试二进制),shell 退出码 0。桌面 crate 按 CI 同样方式排除:本机原生 GTK/Tauri 依赖树编译过长,且本轮未改 desktop 任何文件。179-184 行(P2.8–P2.13)的计数为各自提交时刻的点时证据,按「不篡改历史」原则保留原样、不回填。证据 commit a9d9175。
 - [ ] 文档站浏览器语言自动切换（P2,2026-11-14 G2 巡检登记,等用户拍板范围）——现状:docs/.vitepress/config.mts 的 locales 仅 root(en)+zh,线上 `/zh/` 与全部中文页 lang=zh-CN、正文充实(取证见审计 Round G2 的逐页 CJK 计数表),切换完全靠导航栏手动语言链接,无 navigator.language/rootLocale/Accept-Language 探测。受规基线=手动切换+显式链接,自动识别跳转属增强项,本轮不实施。
 - [x] faultdeck MCP server（rmcp + stdio，照 sandtable-mcp 先例，2026-11-13 用户令「faultdeck 要有 MCP」）——把故障注入能力暴露给 AI agent：`apply_fault`/`clear_fault`（复用 CLI 既有注入链同一后端抽象，netem/iptables/WinDivert 不在 MCP 层重写）、`list_targets`（枚举可注入目标）、`run_scenario`（预置游戏场景模板：断线重连/战斗结算丢包/双机房脑裂）、`read_report`（RunReport 产物读取）。诚实边界：blackhole/bandwidth 未 shipped 不出对应工具。验收：`cargo test --workspace` 全绿（含新 crate）+ stdio e2e（initialize/tools list/call 各一）+ README 双语补 MCP 入口行 + 不绑死单一 backend。
   - 交付：新 crate crates/faultdeck-mcp（rmcp 3.7 + tokio，stdio，bin `faultdeck-mcp`，入根 workspace）；5 tool=list_targets/apply_fault/clear_fault/run_scenario/read_report，全部走 coordinator wire 协议（WireMessage/AgentCommand，同 CLI hub 链路），MCP 层零第二套注入实现，不绑死 backend（能力取自各 agent 注册上报）；run_scenario 跑 report crate Scenario JSON 经同一 inject 链并回传 scenario_hash，游戏场景模板未 shipped 故未暴露预置面；诚实边界落实：blackhole/bandwidth 无工具且按名拒绝（口径=README「Shipped fault types」），失败=tool-level isError 原文透传，destructive 与显式 target 要求写入 tool description；测试 faultdeck-mcp 4（build_injection 对齐 CLI 语义、未 shipped 类型按名拒绝、响应映射、native 层对真实 coordinator）+ stdio e2e 1（官方 rmcp 客户端真 spawn：initialize→tools/list 断言恰 5 工具→list_targets/read_report/apply_fault/run_scenario 错误与拒绝通道）；cargo test --workspace 全绿（108 passed, 0 failed）；clippy --all-targets -D warnings 零告警；fmt --check 干净；README.md/README.zh.md 各补一行 MCP 入口
